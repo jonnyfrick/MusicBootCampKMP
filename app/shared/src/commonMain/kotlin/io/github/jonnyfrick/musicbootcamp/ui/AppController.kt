@@ -12,13 +12,24 @@ import io.github.jonnyfrick.musicbootcamp.core.persistence.Setup
 import io.github.jonnyfrick.musicbootcamp.core.persistence.SetupRepository
 import io.github.jonnyfrick.musicbootcamp.core.practice.PracticeRunner
 import io.github.jonnyfrick.musicbootcamp.core.practice.PracticeStatus
-import io.github.jonnyfrick.musicbootcamp.platform.MidiInputPort
+import io.github.jonnyfrick.musicbootcamp.core.midi.MidiMessage
+import io.github.jonnyfrick.musicbootcamp.core.model.PracticeMode
+import io.github.jonnyfrick.musicbootcamp.core.persistence.InputSource
+import io.github.jonnyfrick.musicbootcamp.core.pitch.DetectedNote
+import io.github.jonnyfrick.musicbootcamp.core.pitch.detectNotes
+import io.github.jonnyfrick.musicbootcamp.core.practice.OwnSoundGate
+import io.github.jonnyfrick.musicbootcamp.platform.AudioInputPort
 import io.github.jonnyfrick.musicbootcamp.platform.MidiOutputPort
 import io.github.jonnyfrick.musicbootcamp.platform.PlatformServices
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 
 /**
@@ -70,8 +81,25 @@ class AppController(
     val midiUnavailableReason: String? get() = services.midi.unavailableReason
     val canImportLegacyFiles: Boolean get() = services.legacyFiles != null
 
+    var audioInputDevices by mutableStateOf(listOf<String>())
+        private set
+
+    /** Microphone level (RMS, 0..1) while the microphone is open. */
+    var microphoneLevel by mutableStateOf(0.0)
+        private set
+    var micTesting by mutableStateOf(false)
+        private set
+    var micTestNote by mutableStateOf<DetectedNote?>(null)
+        private set
+
+    val audioUnavailableReason: String? get() = services.audio.unavailableReason
+
     private var runner: PracticeRunner? = null
-    private var ports: Pair<MidiInputPort, MidiOutputPort>? = null
+    private var output: MidiOutputPort? = null
+    private var gate: OwnSoundGate? = null
+    private val closers = mutableListOf<() -> Unit>()
+    private var micTestPort: AudioInputPort? = null
+    private var micTestJob: Job? = null
     private var statusJob: Job? = null
     private var saveJob: Job? = null
     private var preferencesJob: Job? = null
@@ -185,8 +213,12 @@ class AppController(
     /** Java: "Go!" in the run dialog. */
     fun startPractice() {
         if (running) return
+        val microphone = preferences.inputSource == InputSource.MICROPHONE
         val problem = when {
             services.midi.unavailableReason != null -> services.midi.unavailableReason
+            microphone && services.audio.unavailableReason != null -> services.audio.unavailableReason
+            microphone && settings.mode != PracticeMode.MONOPHONIC ->
+                "The microphone recognises single notes so far. Choose the monophonic mode or MIDI input."
             !settings.mode.isImplemented -> "The mode '${settings.mode.legacyId}' is not implemented (it was not in the Java version either)."
             settings.intervalPriorities.all { it == 0 } -> "Give at least one interval a weight above 0."
             else -> null
@@ -195,18 +227,18 @@ class AppController(
             message = problem
             return
         }
+        stopMicTest()
 
         // Learned sequences are saved when the exercise stops; no background save may touch them meanwhile.
         saveJob?.cancel()
-        val opened = runCatching { openPorts() }.getOrElse {
-            message = "Could not open MIDI devices: ${it.message}"
+        val input = runCatching { if (microphone) openMicrophoneInput() else openMidiInput() }.getOrElse {
+            closePorts()
+            message = "Could not open the input: ${it.message}"
             return
         }
-        ports = opened
-        val (input, output) = opened
-        Tuning.messages(preferences.referenceAHz).forEach(output::send)
+        val practiceOutput = gate ?: output!!
 
-        val practice = PracticeRunner(scope, settings, setup.memory(), output, input.messages)
+        val practice = PracticeRunner(scope, settings, setup.memory(), practiceOutput, input)
         runner = practice
         running = true
         statusJob = scope.launch { practice.status.collect { status = it } }
@@ -222,6 +254,7 @@ class AppController(
 
     /** Stops a running exercise and writes everything to disk; call before the app exits. */
     suspend fun shutdown() {
+        stopMicTest()
         val practice = runner
         runner = null
         if (practice != null) stopAndSave(practice) else saveNow()
@@ -231,28 +264,86 @@ class AppController(
         practice.stop()
         statusJob?.cancel()
         status = practice.status.value
-        ports?.let { (input, output) ->
-            input.close()
-            output.close()
-        }
-        ports = null
+        closePorts()
         refreshSetupState()
         saveNow()
         running = false
     }
 
-    private fun openPorts(): Pair<MidiInputPort, MidiOutputPort> {
-        refreshDevices()
+    /** Opens the MIDI output (tuned) and the MIDI keyboard; returns the keyboard's messages. */
+    private fun openMidiInput(): Flow<MidiMessage> {
+        openOutput()
         val inputName = preferences.midiInputDevice?.takeIf { it in inputDevices } ?: defaultDevice(inputDevices)
             ?: error("No MIDI input device found. Connect your keyboard and choose it in Preferences.")
+        val input = services.midi.openInput(inputName)
+        closers += input::close
+        return input.messages
+    }
+
+    /** Opens the MIDI output (tuned) and the microphone; returns the recognised notes as note-ons. */
+    private fun openMicrophoneInput(): Flow<MidiMessage> {
+        val midiOutput = openOutput()
+        val audio = services.audio.open(preferences.audioInputDevice)
+        closers += audio::close
+        val ownSound = if (preferences.usesHeadphones) null else OwnSoundGate(midiOutput)
+        gate = ownSound
+        return audio.blocks
+            .detectNotes(audio.sampleRate, preferences.referenceAHz, onLevel = { microphoneLevel = it })
+            .flowOn(Dispatchers.Default)
+            // Evaluated where the exercise runs, which is also where the gate sees the notes played.
+            .filter { ownSound?.isQuiet() ?: true }
+    }
+
+    private fun openOutput(): MidiOutputPort {
+        refreshDevices()
         val outputName = preferences.midiOutputDevice?.takeIf { it in outputDevices } ?: defaultDevice(outputDevices)
             ?: error("No MIDI output device found.")
-        val output = services.midi.openOutput(outputName)
-        val input = runCatching { services.midi.openInput(inputName) }.getOrElse {
-            output.close()
-            throw it
+        val port = services.midi.openOutput(outputName)
+        output = port
+        Tuning.messages(preferences.referenceAHz).forEach(port::send)
+        return port
+    }
+
+    private fun closePorts() {
+        closers.forEach { runCatching { it() } }
+        closers.clear()
+        output?.let { runCatching { it.close() } }
+        output = null
+        gate = null
+    }
+
+    // ------------------------------------------------------------ microphone test
+
+    /** Opens the microphone and shows level and recognised notes in Preferences. */
+    fun startMicTest() {
+        if (running || micTesting) return
+        val audio = runCatching { services.audio.open(preferences.audioInputDevice) }.getOrElse {
+            message = "Could not open the microphone: ${it.message}"
+            return
         }
-        return input to output
+        micTestPort = audio
+        micTesting = true
+        micTestNote = null
+        micTestJob = launchSafely {
+            audio.blocks
+                .detectNotes(
+                    audio.sampleRate,
+                    preferences.referenceAHz,
+                    onNote = { micTestNote = it },
+                    onLevel = { microphoneLevel = it },
+                )
+                .flowOn(Dispatchers.Default)
+                .collect()
+        }
+    }
+
+    fun stopMicTest() {
+        micTestJob?.cancel()
+        micTestJob = null
+        micTestPort?.close()
+        micTestPort = null
+        micTesting = false
+        microphoneLevel = 0.0
     }
 
     // ------------------------------------------------------------- preferences
@@ -260,6 +351,7 @@ class AppController(
     fun refreshDevices() {
         inputDevices = runCatching { services.midi.inputDevices() }.getOrDefault(emptyList())
         outputDevices = runCatching { services.midi.outputDevices() }.getOrDefault(emptyList())
+        audioInputDevices = runCatching { services.audio.devices() }.getOrDefault(emptyList())
     }
 
     fun setShowGivenNotes(show: Boolean) = updatePreferences { it.copy(showGivenNotes = show) }
@@ -267,11 +359,21 @@ class AppController(
     fun selectInputDevice(name: String) = updatePreferences { it.copy(midiInputDevice = name) }
     fun selectOutputDevice(name: String) = updatePreferences { it.copy(midiOutputDevice = name) }
 
-    /** Java: Preferences → Kammerton A. Applies immediately to a running exercise. */
+    /** Java: Preferences → Kammerton A. Applies immediately to the output of a running exercise. */
     fun setReferenceA(hz: Double) {
         val clamped = hz.coerceIn(Tuning.MIN_A_HZ, Tuning.MAX_A_HZ)
         updatePreferences { it.copy(referenceAHz = clamped) }
-        ports?.second?.let { output -> Tuning.messages(clamped).forEach(output::send) }
+        output?.let { port -> Tuning.messages(clamped).forEach(port::send) }
+    }
+
+    fun setInputSource(source: InputSource) = updatePreferences { it.copy(inputSource = source) }
+    fun setUsesHeadphones(uses: Boolean) = updatePreferences { it.copy(usesHeadphones = uses) }
+
+    fun selectAudioInputDevice(name: String?) {
+        val wasTesting = micTesting
+        stopMicTest()
+        updatePreferences { it.copy(audioInputDevice = name) }
+        if (wasTesting) startMicTest()
     }
 
     /** The device used when none is chosen: the first one that is not Java's built-in sequencer. */

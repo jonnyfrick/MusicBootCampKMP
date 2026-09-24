@@ -69,4 +69,19 @@ data class AppPreferences(
     val lastSetup: String? = null,
     /** Show the given notes while practising; off by default because the point is to hear them. */
     val showGivenNotes: Boolean = false,
+    /** Where the played notes come from. */
+    val inputSource: InputSource = InputSource.MIDI,
+    /** Microphone for [InputSource.MICROPHONE]; null = system default. */
+    val audioInputDevice: String? = null,
+    /** With headphones the microphone cannot hear the app, so input is accepted at any time. */
+    val usesHeadphones: Boolean = false,
 )
+
+@Serializable
+enum class InputSource {
+    /** A MIDI keyboard. */
+    MIDI,
+
+    /** An acoustic instrument (piano) via microphone and pitch detection; single notes only for now. */
+    MICROPHONE,
+}

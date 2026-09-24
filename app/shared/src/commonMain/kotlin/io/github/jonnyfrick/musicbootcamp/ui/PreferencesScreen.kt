@@ -1,12 +1,18 @@
 package io.github.jonnyfrick.musicbootcamp.ui
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -17,7 +23,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import io.github.jonnyfrick.musicbootcamp.core.midi.NoteNames
 import io.github.jonnyfrick.musicbootcamp.core.midi.Tuning
+import io.github.jonnyfrick.musicbootcamp.core.persistence.InputSource
 import kotlin.math.roundToInt
 
 /** Java: MusicBootCamp → Preferences (`PreferencesDialog`). */
@@ -25,6 +33,22 @@ import kotlin.math.roundToInt
 internal fun PreferencesScreen(controller: AppController) {
     val preferences = controller.preferences
     val running = controller.running
+
+    SectionTitle("Input")
+    RadioGroup(
+        options = InputSource.entries,
+        selected = preferences.inputSource,
+        label = {
+            when (it) {
+                InputSource.MIDI -> "MIDI keyboard"
+                InputSource.MICROPHONE -> "Microphone (acoustic piano, single notes)"
+            }
+        },
+        enabled = { !running && (it == InputSource.MIDI || controller.audioUnavailableReason == null) },
+        onSelect = controller::setInputSource,
+    )
+    if (preferences.inputSource == InputSource.MICROPHONE) MicrophoneSettings(controller)
+    controller.audioUnavailableReason?.let { Hint(it) }
 
     SectionTitle("MIDI devices")
     controller.midiUnavailableReason?.let { Hint(it) }
@@ -67,6 +91,54 @@ internal fun PreferencesScreen(controller: AppController) {
 }
 
 @Composable
+private fun MicrophoneSettings(controller: AppController) {
+    val preferences = controller.preferences
+    val running = controller.running
+    DeviceChooser(
+        label = "Microphone",
+        devices = listOf(SYSTEM_DEFAULT) + controller.audioInputDevices,
+        selected = preferences.audioInputDevice?.takeIf { it in controller.audioInputDevices } ?: SYSTEM_DEFAULT,
+        enabled = !running,
+        onSelect = { controller.selectAudioInputDevice(it.takeIf { name -> name != SYSTEM_DEFAULT }) },
+    )
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Switch(checked = preferences.usesHeadphones, onCheckedChange = controller::setUsesHeadphones, enabled = !running)
+        Spacer(Modifier.width(12.dp))
+        Text("I use headphones")
+    }
+    Hint(
+        if (preferences.usesHeadphones) {
+            "Notes you play are recognised at any time."
+        } else {
+            "Without headphones the microphone hears the app too, so your notes only count once the given note has ended."
+        },
+    )
+    Spacer(Modifier.height(8.dp))
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        if (controller.micTesting) {
+            OutlinedButton(onClick = controller::stopMicTest) { Text("Stop test") }
+        } else {
+            OutlinedButton(onClick = controller::startMicTest, enabled = !running) { Text("Test microphone") }
+        }
+        if (controller.micTesting) {
+            LinearProgressIndicator(
+                progress = { (controller.microphoneLevel * 5).toFloat().coerceIn(0f, 1f) },
+                modifier = Modifier.width(160.dp),
+            )
+            val note = controller.micTestNote
+            Text(
+                if (note == null) "play a key…" else {
+                    val cents = note.cents.roundToInt()
+                    "${NoteNames.displayName(note.midiNote)} (${if (cents >= 0) "+" else ""}$cents ct)"
+                },
+                style = MaterialTheme.typography.titleMedium,
+            )
+        }
+    }
+    Hint("Relative to Kammerton A below. The level bar should move clearly when you play.")
+}
+
+@Composable
 private fun DeviceChooser(
     label: String,
     devices: List<String>,
@@ -92,3 +164,5 @@ private fun DeviceChooser(
         }
     }
 }
+
+private const val SYSTEM_DEFAULT = "System default"

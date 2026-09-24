@@ -20,6 +20,7 @@ fun desktopServices(dataDirectory: File = defaultDataDirectory()) = PlatformServ
     midi = JavaSoundMidiBackend(),
     documents = FileDocumentStore(dataDirectory),
     legacyFiles = AwtLegacyFilePicker(),
+    audio = JavaSoundAudioInput(),
 )
 
 /**

@@ -130,6 +130,33 @@ off-screen into `app/desktopApp/build/screenshots` and runs an exercise against 
   "Count transposed sequences", `RecordSequence` (marked "Does not work yet").
 - The MIDI message decoder in `AddToCorrectorReceiver` (debug output only).
 
+## Additions after the migration
+
+### Microphone input with pitch detection (acoustic piano, single notes)
+
+Preferences → Input → "Microphone". Detected notes enter the exercise as ordinary note-on
+messages, so the exercise logic is the same as with a MIDI keyboard.
+
+- `core/pitch/PitchDetector` – McLeod Pitch Method (McLeod & Wyvill 2005), NSDF via FFT, own
+  implementation in common Kotlin (no native code, no GPL libraries such as aubio or TarsosDSP;
+  Pure Data's fiddle~/sigmund~ would need libpd built natively for every platform).
+- `core/pitch/NoteTracker` – one note per key stroke: onset = level jump of the newest 11.6 ms
+  hop, then the pitch must agree over two windows. The window just before the stroke is removed
+  from the power spectrum, so a still ringing previous note (legato, sustain pedal) does not merge
+  with the new one into a lower common pitch. Latency about 50 ms. The Kammerton A is taken into account.
+- `core/practice/OwnSoundGate` – without headphones the microphone hears the app's own notes;
+  input is ignored while an app note sounds and 200 ms after it.
+- Desktop capture: `app/shared/src/jvmMain/.../JavaSoundAudio.kt` (javax.sound.sampled, 44.1 kHz
+  mono). Other platforms have the `AudioInputBackend` interface but no implementation yet
+  (Android `AudioRecord`, iOS `AVAudioEngine`, web `getUserMedia` + AudioWorklet).
+- "Test microphone" in Preferences shows the level and the recognised note with its cents deviation.
+- Tests (`PitchDetectionTest`) use synthetic piano tones with inharmonic partials, a weak bass
+  fundamental and hammer noise: every note 36–96, legato, sustain pedal, repeated keys, 442 Hz
+  tuning, detuning, noise. They still need to be checked against recordings of a real piano.
+- Two voices from the microphone are not supported yet (planned: harmonic-sum candidate search
+  within the known range, fallback Spotify Basic Pitch).
+- macOS asks for microphone permission for the app that starts the JVM (e.g. the terminal).
+
 ## Storage
 
 Desktop data directory: `~/Library/Application Support/MusicBootCamp` (macOS),

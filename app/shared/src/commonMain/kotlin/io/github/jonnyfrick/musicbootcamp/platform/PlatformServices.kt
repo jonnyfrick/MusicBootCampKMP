@@ -38,6 +38,30 @@ class UnsupportedMidiBackend(override val unavailableReason: String) : MidiBacke
     override fun openOutput(name: String): MidiOutputPort = throw UnsupportedOperationException(unavailableReason)
 }
 
+/** An opened microphone / line input delivering mono samples in -1..1. */
+interface AudioInputPort {
+    val sampleRate: Int
+    /** Cold flow: recording runs while it is collected. */
+    val blocks: Flow<FloatArray>
+    fun close()
+}
+
+/** Access to the platform's audio inputs, for pitch detection. Desktop uses javax.sound.sampled. */
+interface AudioInputBackend {
+    /** Null when audio input works on this platform, otherwise why it does not. */
+    val unavailableReason: String?
+
+    fun devices(): List<String>
+
+    /** Opens the named input, or the system default for null. */
+    fun open(name: String?): AudioInputPort
+}
+
+class UnsupportedAudioInput(override val unavailableReason: String) : AudioInputBackend {
+    override fun devices(): List<String> = emptyList()
+    override fun open(name: String?): AudioInputPort = throw UnsupportedOperationException(unavailableReason)
+}
+
 /** A Java-version settings file chosen by the user, with access to the files next to it. */
 class LegacySelection(
     val suggestedName: String,
@@ -56,6 +80,7 @@ class PlatformServices(
     val documents: DocumentStore,
     /** Null where importing old files makes no sense (no file system access). */
     val legacyFiles: LegacyFilePicker?,
+    val audio: AudioInputBackend = UnsupportedAudioInput("Microphone input is only implemented in the desktop app so far."),
 ) {
     companion object {
         /** For Android, iOS and web until their MIDI and storage implementations exist. */

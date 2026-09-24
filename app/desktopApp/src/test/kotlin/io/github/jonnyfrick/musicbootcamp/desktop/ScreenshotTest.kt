@@ -14,7 +14,11 @@ import io.github.jonnyfrick.musicbootcamp.platform.MidiInputPort
 import io.github.jonnyfrick.musicbootcamp.platform.MidiOutputPort
 import io.github.jonnyfrick.musicbootcamp.platform.PlatformServices
 import io.github.jonnyfrick.musicbootcamp.ui.App
+import io.github.jonnyfrick.musicbootcamp.platform.AudioInputBackend
+import io.github.jonnyfrick.musicbootcamp.platform.AudioInputPort
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
 import org.jetbrains.skia.EncodedImageFormat
 import java.io.File
@@ -61,7 +65,16 @@ class ScreenshotTest {
             SetupRepository(store).save(imported.setup)
         }
         val midi = FakeMidi()
-        val services = PlatformServices(midi, store, legacyFiles = { null })
+        val microphone = object : AudioInputBackend {
+            override val unavailableReason: String? = null
+            override fun devices() = listOf("Built-in Microphone")
+            override fun open(name: String?) = object : AudioInputPort {
+                override val sampleRate = 44_100
+                override val blocks = flow { while (true) { emit(FloatArray(512)); delay(11) } }
+                override fun close() = Unit
+            }
+        }
+        val services = PlatformServices(midi, store, legacyFiles = { null }, audio = microphone)
 
         val scene = ImageComposeScene(width = 900, height = 1100, density = Density(1f)) { App(services) }
         var time = 0L
@@ -88,6 +101,8 @@ class ScreenshotTest {
         click(337f, tabY); snapshot("2-exercise")
         click(562f, tabY); snapshot("3-memory")
         click(787f, tabY); snapshot("4-preferences")
+        click(MICROPHONE_RADIO_X, MICROPHONE_RADIO_Y); snapshot("4b-preferences-microphone")
+        click(MIDI_RADIO_X, MIDI_RADIO_Y)
 
         click(112f, tabY)
         click(142f, 396f) // Go!
@@ -106,3 +121,9 @@ class ScreenshotTest {
         assertTrue(noteOns >= 2, "the exercise should have played notes")
     }
 }
+
+// Radio buttons of the Input section on the Preferences tab.
+private const val MIDI_RADIO_X = 118f
+private const val MIDI_RADIO_Y = 194f
+private const val MICROPHONE_RADIO_X = 118f
+private const val MICROPHONE_RADIO_Y = 222f

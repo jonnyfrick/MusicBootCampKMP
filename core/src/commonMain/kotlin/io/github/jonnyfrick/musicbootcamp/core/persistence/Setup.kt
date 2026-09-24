@@ -67,4 +67,6 @@ data class AppPreferences(
     val midiOutputDevice: String? = null,
     val referenceAHz: Double = Tuning.STANDARD_A_HZ,
     val lastSetup: String? = null,
+    /** Show the given notes while practising; off by default because the point is to hear them. */
+    val showGivenNotes: Boolean = false,
 )

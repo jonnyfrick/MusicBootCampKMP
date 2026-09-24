@@ -64,6 +64,12 @@ internal fun MemoryScreen(controller: AppController) {
         }
         Text("Total: ${counts.sum()}", style = MaterialTheme.typography.titleSmall)
     }
+    if (controller.sequencesOutsideRange > 0) {
+        Hint(
+            "${controller.sequencesOutsideRange} of them reach outside the current range " +
+                "(${settings.lowLimit}–${settings.highLimit}) and are skipped until the range covers them again.",
+        )
+    }
     Hint(
         "New mistakes start at the top level. Each time a sequence is practised it moves one level down, " +
             "and after the last level it is forgotten. Higher levels come back more often.",

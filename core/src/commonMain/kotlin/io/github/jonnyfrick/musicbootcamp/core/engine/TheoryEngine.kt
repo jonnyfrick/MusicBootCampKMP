@@ -91,16 +91,31 @@ class TheoryEngine(
             }
             if (randomNumber < 0) offset = -offset
 
-            next[voice] += offset
-            if (next[voice] < settings.lowLimit) next[voice] -= offset * 2
-            if (next[voice] + maxInterval > settings.highLimit) next[voice] -= offset * 2
+            val current = next[voice]
+            next[voice] = when {
+                // Outside the range (e.g. after the range was narrowed) the Java reflection below
+                // turns into an unbounded random walk that can drift far away; step back instead.
+                current > settings.highLimit -> current - abs(offset)
+                current < settings.lowLimit -> current + abs(offset)
+                else -> {
+                    var note = current + offset
+                    if (note < settings.lowLimit) note -= offset * 2
+                    if (note + maxInterval > settings.highLimit) note -= offset * 2
+                    note
+                }
+            }
         }
         positions = next
     }
 
     private fun embedLearnedSequence(): Boolean {
         // The Java version built a list of the current pitches, but only its first entry was used.
-        val sequence = memory.takeAndDowngrade(positions[0], random)
+        // Unlike Java, sequences reaching outside the current range are not played (they were
+        // learned with another range); they stay in memory for when the range fits again.
+        val range = settings.lowLimit..settings.highLimit
+        val sequence = memory.takeAndDowngrade(positions[0], random) { sequence ->
+            sequence.all { element -> element.pitches.all { it in range } }
+        }
         if (sequence == null) {
             currentSequence = mutableListOf()
             return false

@@ -43,13 +43,22 @@ class LearnedSequences {
      * sequences for [firstPitch], one of them is taken at random and re-filed one level
      * lower (or forgotten after the lowest level). Returns null when the drawn level is
      * empty — the caller then falls back to a random step, as in the Java version.
+     *
+     * A drawn sequence that is not [playable] stays where it is and null is returned; the
+     * random numbers consumed are the same either way.
      */
-    fun takeAndDowngrade(firstPitch: Int, random: RandomSource): LearnedSequence? {
+    fun takeAndDowngrade(
+        firstPitch: Int,
+        random: RandomSource,
+        playable: (LearnedSequence) -> Boolean = { true },
+    ): LearnedSequence? {
         val level = PriorityLevelPicker.pick(random)
         if (firstPitch !in 0 until MIDI_KEYS) return null
         val bucket = buckets[firstPitch][level]
         if (bucket.isEmpty()) return null
-        val sequence = bucket.removeAt(random.nextInt(bucket.size))
+        val index = random.nextInt(bucket.size)
+        if (!playable(bucket[index])) return null
+        val sequence = bucket.removeAt(index)
         size--
         if (level + 1 < PRIORITY_LEVELS) insert(sequence, level + 1)
         return sequence
@@ -63,6 +72,9 @@ class LearnedSequences {
     /** Stored sequences per priority level (level 0 first), keys ascending within a level. */
     fun byPriority(): List<List<LearnedSequence>> =
         List(PRIORITY_LEVELS) { level -> buckets.flatMap { it[level] } }
+
+    /** How many stored sequences match [predicate]. */
+    fun count(predicate: (LearnedSequence) -> Boolean): Int = buckets.sumOf { levels -> levels.sumOf { it.count(predicate) } }
 
     /** How many sequences each priority level holds. */
     fun countsByPriority(): List<Int> = List(PRIORITY_LEVELS) { level -> buckets.sumOf { it[level].size } }

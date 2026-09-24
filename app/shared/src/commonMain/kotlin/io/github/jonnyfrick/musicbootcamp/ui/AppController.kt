@@ -49,6 +49,9 @@ class AppController(
     /** Sequences per priority level in the memory of the current mode. */
     var memoryCounts by mutableStateOf(List(LearnedSequences.PRIORITY_LEVELS) { 0 })
         private set
+    /** Learned sequences of the current mode that reach outside the current range and are skipped. */
+    var sequencesOutsideRange by mutableStateOf(0)
+        private set
     var status by mutableStateOf(PracticeStatus())
         private set
     var inputDevices by mutableStateOf(listOf<String>())
@@ -259,6 +262,8 @@ class AppController(
         outputDevices = runCatching { services.midi.outputDevices() }.getOrDefault(emptyList())
     }
 
+    fun setShowGivenNotes(show: Boolean) = updatePreferences { it.copy(showGivenNotes = show) }
+
     fun selectInputDevice(name: String) = updatePreferences { it.copy(midiInputDevice = name) }
     fun selectOutputDevice(name: String) = updatePreferences { it.copy(midiOutputDevice = name) }
 
@@ -308,6 +313,8 @@ class AppController(
         setupName = setup.name
         settings = setup.settings
         memoryCounts = setup.memory().countsByPriority()
+        val range = settings.lowLimit..settings.highLimit
+        sequencesOutsideRange = setup.memory().count { sequence -> sequence.any { element -> element.pitches.any { it !in range } } }
     }
 
     private fun scheduleSave() {

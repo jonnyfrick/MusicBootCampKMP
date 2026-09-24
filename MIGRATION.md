@@ -105,10 +105,21 @@ off-screen into `app/desktopApp/build/screenshots` and runs an exercise against 
 - **Crash cases handled.** Java crashed (and its timer silently died) on: all interval weights 0,
   a chord wider than the voice count, sequences starting outside 0–127, and on starting the
   unimplemented "Homophonic modes". Now these are prevented in the UI or ignored.
+- **Exercise stays in its range (bug fix, also present in Java).** Once the note was outside the
+  range, the Java reflection at the limits no longer pulled it back: steps turned into an unbounded
+  random walk that could drift far away (reproduced: range 48–72, one voice at 107). It got outside
+  through learned sequences recorded with a different range (or a narrowed range). Now
+  learned sequences that reach outside the current range are skipped (they stay in memory, the
+  Memory tab shows how many), and random steps from outside the range always move towards it.
+  Within the range the behaviour and the consumed random numbers are unchanged, so the golden master
+  tests still pass. Tests: `CoreTest.learnedSequencesOutsideTheRangeDoNotLeadTheExerciseAway`,
+  `CoreTest.randomStepsFindBackIntoTheRange`.
+- **Given notes hidden by default.** The point is to hear them; "Show notes" on the Practice tab
+  reveals them (stored in `preferences.json`).
 - **Settings edited in place** (no OK/Cancel dialogs); they are locked while an exercise runs,
   because Java also only read them when an exercise started.
-- **Live feedback** during practice (current note, correct/wrong counters). The Java run dialog
-  showed nothing.
+- **Live feedback** during practice (correct/wrong counters, optionally the current note). The Java
+  run dialog showed nothing.
 - Velocity (was only editable in the XML file) and memory size ("Remember N predecessors" existed
   in the Java dialog but was not connected) are now editable.
 

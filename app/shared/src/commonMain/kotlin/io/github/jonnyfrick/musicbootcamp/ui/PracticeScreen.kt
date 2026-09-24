@@ -13,6 +13,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -45,7 +46,11 @@ internal fun PracticeScreen(controller: AppController) {
     Card(Modifier.fillMaxWidth().padding(vertical = 16.dp)) {
         Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
-                if (status.given.isEmpty()) "–" else status.given.distinct().joinToString("  ") { NoteNames.displayName(it) },
+                when {
+                    status.given.isEmpty() -> "–"
+                    !controller.preferences.showGivenNotes -> "♪ ?"
+                    else -> status.given.distinct().joinToString("  ") { NoteNames.displayName(it) }
+                },
                 style = MaterialTheme.typography.displayMedium,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -72,9 +77,12 @@ internal fun PracticeScreen(controller: AppController) {
         }
     }
 
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         Button(onClick = controller::startPractice, enabled = !running) { Text("Go!") }
         OutlinedButton(onClick = controller::stopPractice, enabled = running) { Text("Stop") }
+        Spacer(Modifier.weight(1f))
+        Text("Show notes")
+        Switch(checked = controller.preferences.showGivenNotes, onCheckedChange = controller::setShowGivenNotes)
     }
 
     SectionTitle("Your sequences")

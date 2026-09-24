@@ -92,7 +92,40 @@ class CoreTest {
         assertEquals(MidiMessage.noteOn(60, settings.midiOutVelocity), sent.last())
         repeat(500) {
             val note = session.step().given.single()
-            assertTrue(note in 48 - 11..72 + 11, "note $note far outside the range")
+            assertTrue(note in 48..72, "note $note outside the range")
+        }
+    }
+
+    /**
+     * A sequence learned with a wider range (here up to 90) used to lead the exercise out
+     * of the current range; the random steps then could not find back and drifted away.
+     */
+    @Test
+    fun learnedSequencesOutsideTheRangeDoNotLeadTheExerciseAway() {
+        for (seed in 1..20) {
+            val settings = PracticeSettings(
+                mode = PracticeMode.MONOPHONIC, lowLimit = 48, highLimit = 72, startPosition = 60, learnedProbability = 1.0,
+            )
+            val memory = LearnedSequences()
+            memory.insert(listOf(Note(60), Note(70), Note(80), Note(90)), 0)
+            memory.insert(listOf(Note(60), Note(64), Note(67)), 0)
+            val session = PracticeSession(settings, memory, KotlinRandomSource(Random(seed))) { }
+
+            val notes = List(300) { session.step().given.single() }
+            assertTrue(notes.all { it in 48..72 }, "seed $seed left the range: ${notes.filter { it !in 48..72 }.take(10)}")
+            assertTrue("[60, 70, 80, 90]" in memory.canonicalText(), "the unplayable sequence is kept for a wider range later")
+        }
+    }
+
+    @Test
+    fun randomStepsFindBackIntoTheRange() {
+        // E.g. after the range was narrowed: the reference note lies above the new range.
+        val settings = PracticeSettings(mode = PracticeMode.TWO_VOICES_PURE_RANDOM, lowLimit = 48, highLimit = 72, startPosition = 95)
+        for (seed in 1..20) {
+            val session = PracticeSession(settings, LearnedSequences(), KotlinRandomSource(Random(seed))) { }
+            val chords = List(200) { session.step().given }
+            val stray = chords.drop(50).firstOrNull { chord -> chord.any { it !in 48..72 } }
+            assertNull(stray, "seed $seed: still outside the range after 50 steps")
         }
     }
 

@@ -19,6 +19,8 @@ kotlin {
         }
     }
     
+    jvm()
+    
     js {
         browser()
         binaries.executable()
@@ -31,7 +33,7 @@ kotlin {
     }
     
     android {
-       namespace = "org.example.project.app.shared"
+       namespace = "io.github.jonnyfrick.musicbootcamp.shared"
        compileSdk = libs.versions.android.compileSdk.get().toInt()
        minSdk = libs.versions.android.minSdk.get().toInt()
     
@@ -66,9 +68,13 @@ kotlin {
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.androidx.lifecycle.viewmodelCompose)
             implementation(libs.androidx.lifecycle.runtimeCompose)
+            implementation(libs.kotlinx.coroutines.core)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
+        }
+        jvmMain.dependencies {
+            implementation(libs.kotlinx.coroutines.swing)
         }
         jsMain.dependencies {
             implementation(libs.wrappers.browser)

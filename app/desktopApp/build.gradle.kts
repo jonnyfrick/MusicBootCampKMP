@@ -10,6 +10,8 @@ dependencies {
     implementation(project(":app:shared"))
     implementation(compose.desktop.currentOs)
     implementation(libs.kotlinx.coroutines.swing)
+
+    testImplementation(libs.kotlin.test)
 }
 
 compose.desktop {
@@ -24,4 +26,10 @@ compose.desktop {
             modules("java.desktop")
         }
     }
+}
+
+// `./gradlew :app:desktopApp:run -Pmusicbootcamp.dataDir=/some/dir` keeps test runs away from the real data.
+val dataDirOverride = providers.gradleProperty("musicbootcamp.dataDir")
+tasks.withType<JavaExec>().configureEach {
+    dataDirOverride.orNull?.let { systemProperty("musicbootcamp.dataDir", it) }
 }

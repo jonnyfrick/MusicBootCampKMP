@@ -70,7 +70,7 @@ class SetupRepository(private val store: DocumentStore) {
 
         /** Makes [name] usable as a file name: unsafe characters become `_`. */
         fun sanitizeName(name: String): String =
-            name.trim().map { if (it.isLetterOrDigit() || it in "-_ ") it else '_' }.joinToString("").ifEmpty { "setup" }
+            name.trim().map { if (it.isLetterOrDigit() || it in "-_ ()") it else '_' }.joinToString("").ifEmpty { "setup" }
 
         private fun fileName(setupName: String): String = SETUP_PREFIX + sanitizeName(setupName) + SUFFIX
     }

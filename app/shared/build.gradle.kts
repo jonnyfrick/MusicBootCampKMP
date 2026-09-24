@@ -76,6 +76,9 @@ kotlin {
         jvmMain.dependencies {
             implementation(libs.kotlinx.coroutines.swing)
         }
+        jvmTest.dependencies {
+            implementation(libs.kotlinx.coroutines.test)
+        }
         jsMain.dependencies {
             implementation(libs.wrappers.browser)
         }

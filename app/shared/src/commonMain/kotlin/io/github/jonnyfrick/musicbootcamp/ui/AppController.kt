@@ -15,6 +15,7 @@ import io.github.jonnyfrick.musicbootcamp.core.practice.PracticeStatus
 import io.github.jonnyfrick.musicbootcamp.platform.MidiInputPort
 import io.github.jonnyfrick.musicbootcamp.platform.MidiOutputPort
 import io.github.jonnyfrick.musicbootcamp.platform.PlatformServices
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -70,9 +71,10 @@ class AppController(
     private var ports: Pair<MidiInputPort, MidiOutputPort>? = null
     private var statusJob: Job? = null
     private var saveJob: Job? = null
+    private var preferencesJob: Job? = null
 
     fun load() {
-        scope.launch {
+        launchSafely {
             preferences = repository.loadPreferences()
             val names = repository.setupNames()
             val initial = preferences.lastSetup?.takeIf { it in names } ?: names.firstOrNull()
@@ -95,12 +97,12 @@ class AppController(
 
     fun selectSetup(name: String) {
         if (running || name == setupName) return
-        scope.launch {
+        launchSafely {
             saveNow()
             val loaded = runCatching { repository.load(name) }.getOrElse {
                 message = "Could not open setup '$name': ${it.message}"
                 null
-            } ?: return@launch
+            } ?: return@launchSafely
             setup = loaded
             refreshSetupState()
             updatePreferences { it.copy(lastSetup = name) }
@@ -111,7 +113,7 @@ class AppController(
     fun saveSetupAs(name: String) {
         if (running) return
         val cleanName = uniqueName(SetupRepository.sanitizeName(name))
-        scope.launch {
+        launchSafely {
             saveNow()
             setup = setup.copy(cleanName)
             repository.save(setup)
@@ -123,7 +125,7 @@ class AppController(
 
     fun deleteCurrentSetup() {
         if (running) return
-        scope.launch {
+        launchSafely {
             saveJob?.cancel()
             repository.delete(setup.name)
             val remaining = repository.setupNames()
@@ -146,17 +148,17 @@ class AppController(
     fun importLegacySetup() {
         val picker = services.legacyFiles ?: return
         if (running) return
-        scope.launch {
+        launchSafely {
             val selection = runCatching { picker.pickSettingsFile() }.getOrElse {
                 message = "Import failed: ${it.message}"
                 null
-            } ?: return@launch
+            } ?: return@launchSafely
             saveNow()
             val name = uniqueName(SetupRepository.sanitizeName(selection.suggestedName))
             val result = runCatching { LegacyImport.importSetup(name, selection.settingsXml, selection.readSibling) }
                 .getOrElse {
                     message = "Import failed: ${it.message}"
-                    return@launch
+                    return@launchSafely
                 }
             setup = result.setup
             repository.save(setup)
@@ -212,7 +214,7 @@ class AppController(
     fun stopPractice() {
         val practice = runner ?: return
         runner = null
-        scope.launch { stopAndSave(practice) }
+        launchSafely { stopAndSave(practice) }
     }
 
     /** Stops a running exercise and writes everything to disk; call before the app exits. */
@@ -283,8 +285,23 @@ class AppController(
 
     private fun updatePreferences(transform: (AppPreferences) -> AppPreferences) {
         preferences = transform(preferences)
-        val snapshot = preferences
-        scope.launch { repository.savePreferences(snapshot) }
+        // One save at a time, each writing the newest preferences.
+        val previous = preferencesJob
+        preferencesJob = launchSafely {
+            previous?.join()
+            repository.savePreferences(preferences)
+        }
+    }
+
+    /** Launches in [scope]; a failure becomes a message instead of crashing the app. */
+    private fun launchSafely(block: suspend CoroutineScope.() -> Unit): Job = scope.launch {
+        try {
+            block()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            message = "Something went wrong: ${e.message ?: e::class.simpleName}"
+        }
     }
 
     private fun refreshSetupState() {
@@ -295,7 +312,7 @@ class AppController(
 
     private fun scheduleSave() {
         saveJob?.cancel()
-        saveJob = scope.launch {
+        saveJob = launchSafely {
             delay(AUTOSAVE_DELAY_MILLIS)
             repository.save(setup)
         }

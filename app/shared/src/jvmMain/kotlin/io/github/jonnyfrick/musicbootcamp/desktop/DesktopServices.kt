@@ -6,6 +6,8 @@ import io.github.jonnyfrick.musicbootcamp.platform.LegacySelection
 import io.github.jonnyfrick.musicbootcamp.platform.PlatformServices
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.swing.Swing
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.awt.FileDialog
 import java.awt.Frame
@@ -35,19 +37,30 @@ fun defaultDataDirectory(): File {
     }
 }
 
-/** One file per document in [directory]; writes go through a temp file so a crash cannot leave half a file. */
+/**
+ * One file per document in [directory]. Writes go through their own temp file and an
+ * atomic move, one at a time, so neither a crash nor concurrent saves can leave half a file.
+ */
 class FileDocumentStore(private val directory: File) : DocumentStore {
+    private val writeLock = Mutex()
 
     override suspend fun read(name: String): String? = withContext(Dispatchers.IO) {
         file(name).takeIf { it.isFile }?.readText()
     }
 
-    override suspend fun write(name: String, content: String) = withContext(Dispatchers.IO) {
-        directory.mkdirs()
-        val temp = File(directory, "$name.tmp")
-        temp.writeText(content)
-        Files.move(temp.toPath(), file(name).toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
-        Unit
+    override suspend fun write(name: String, content: String) = writeLock.withLock {
+        withContext(Dispatchers.IO) {
+            val target = file(name)
+            directory.mkdirs()
+            val temp = File.createTempFile("$name.", ".tmp", directory)
+            try {
+                temp.writeText(content)
+                Files.move(temp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+            } finally {
+                temp.delete()
+            }
+            Unit
+        }
     }
 
     override suspend fun delete(name: String) = withContext(Dispatchers.IO) {

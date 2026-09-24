@@ -2,6 +2,10 @@ package io.github.jonnyfrick.musicbootcamp.desktop
 
 import io.github.jonnyfrick.musicbootcamp.core.legacy.LegacyImport
 import io.github.jonnyfrick.musicbootcamp.core.persistence.SetupRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import java.io.File
 import java.nio.file.Files
@@ -13,6 +17,20 @@ import kotlin.test.assertTrue
 class DesktopPersistenceTest {
 
     private val legacyFolder = File("../../core/src/jvmTest/resources/golden")
+
+    @Test
+    fun concurrentWritesOfTheSameDocumentDoNotFail() = runBlocking {
+        val directory = Files.createTempDirectory("musicbootcamp-test").toFile()
+        try {
+            val store = FileDocumentStore(directory)
+            // The first legacy import saved the preferences twice at once, which crashed the app.
+            (1..50).map { i -> async(Dispatchers.Default) { store.write("preferences.json", "{\"n\":$i}") } }.awaitAll()
+            assertEquals(listOf("preferences.json"), store.list())
+            assertTrue(store.read("preferences.json")!!.startsWith("{\"n\":"))
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
 
     @Test
     fun importedSetupsSurviveTheFileStore() = runTest {

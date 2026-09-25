@@ -70,6 +70,8 @@ internal fun PreferencesScreen(controller: AppController) {
     )
     TextButton(onClick = controller::refreshDevices, enabled = !running) { Text("Refresh device list") }
     Hint("Devices are opened when you press Go!. \"Gervill\" is Java's built-in software synthesizer.")
+    Spacer(Modifier.height(8.dp))
+    MidiTest(controller)
 
     SectionTitle("Tuning")
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -136,6 +138,37 @@ private fun MicrophoneSettings(controller: AppController) {
         }
     }
     Hint("Relative to Kammerton A below. The level bar should move clearly when you play.")
+}
+
+@Composable
+private fun MidiTest(controller: AppController) {
+    val running = controller.running
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        if (controller.midiTesting) {
+            OutlinedButton(onClick = controller::stopMidiTest) { Text("Stop test") }
+        } else {
+            OutlinedButton(onClick = controller::startMidiTest, enabled = !running && controller.inputDevices.isNotEmpty()) {
+                Text("Test MIDI")
+            }
+        }
+        OutlinedButton(onClick = controller::playTestNote, enabled = !running && controller.outputDevices.isNotEmpty()) {
+            Text("Play test note")
+        }
+        if (controller.midiTesting) {
+            val notes = controller.midiTestNotes
+            Text(
+                if (notes.isEmpty()) "play a key…" else {
+                    val latest = notes.first()
+                    "${NoteNames.displayName(latest.data1)} (${latest.data1}, velocity ${latest.data2})"
+                },
+                style = MaterialTheme.typography.titleMedium,
+            )
+        }
+    }
+    if (controller.midiTesting && controller.midiTestNotes.size > 1) {
+        Hint("Before: " + controller.midiTestNotes.drop(1).joinToString("  ") { NoteNames.displayName(it.data1) })
+    }
+    Hint("\"Test MIDI\" shows the keys arriving from MIDI In; \"Play test note\" plays A' on MIDI Out, tuned to the Kammerton A below.")
 }
 
 @Composable

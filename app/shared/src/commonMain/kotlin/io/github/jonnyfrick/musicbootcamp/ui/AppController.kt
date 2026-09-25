@@ -19,6 +19,7 @@ import io.github.jonnyfrick.musicbootcamp.core.pitch.DetectedNote
 import io.github.jonnyfrick.musicbootcamp.core.pitch.detectNotes
 import io.github.jonnyfrick.musicbootcamp.core.practice.OwnSoundGate
 import io.github.jonnyfrick.musicbootcamp.platform.AudioInputPort
+import io.github.jonnyfrick.musicbootcamp.platform.MidiInputPort
 import io.github.jonnyfrick.musicbootcamp.platform.MidiOutputPort
 import io.github.jonnyfrick.musicbootcamp.platform.PlatformServices
 import kotlinx.coroutines.CancellationException
@@ -100,6 +101,16 @@ class AppController(
     private val closers = mutableListOf<() -> Unit>()
     private var micTestPort: AudioInputPort? = null
     private var micTestJob: Job? = null
+
+    var midiTesting by mutableStateOf(false)
+        private set
+
+    /** Key presses received during the MIDI test, newest first. */
+    var midiTestNotes by mutableStateOf(listOf<MidiMessage>())
+        private set
+    private var midiTestInput: MidiInputPort? = null
+    private var midiTestOutput: MidiOutputPort? = null
+    private var midiTestJob: Job? = null
     private var statusJob: Job? = null
     private var saveJob: Job? = null
     private var preferencesJob: Job? = null
@@ -228,6 +239,7 @@ class AppController(
             return
         }
         stopMicTest()
+        stopMidiTest()
 
         // Learned sequences are saved when the exercise stops; no background save may touch them meanwhile.
         saveJob?.cancel()
@@ -255,6 +267,7 @@ class AppController(
     /** Stops a running exercise and writes everything to disk; call before the app exits. */
     suspend fun shutdown() {
         stopMicTest()
+        stopMidiTest()
         val practice = runner
         runner = null
         if (practice != null) stopAndSave(practice) else saveNow()
@@ -337,6 +350,67 @@ class AppController(
         }
     }
 
+    // --------------------------------------------------------------- MIDI test
+
+    /** Opens the chosen MIDI devices and shows the keys played in Preferences. */
+    fun startMidiTest() {
+        if (running || midiTesting) return
+        refreshDevices()
+        val input = runCatching {
+            val name = preferences.midiInputDevice?.takeIf { it in inputDevices } ?: defaultDevice(inputDevices)
+                ?: error("No MIDI input device found.")
+            services.midi.openInput(name)
+        }.getOrElse {
+            message = "Could not open the MIDI input: ${it.message}"
+            return
+        }
+        midiTestInput = input
+        midiTesting = true
+        midiTestNotes = emptyList()
+        midiTestJob = launchSafely {
+            input.messages.filter { it.isNoteOn }.collect { note ->
+                midiTestNotes = (listOf(note) + midiTestNotes).take(MIDI_TEST_HISTORY)
+            }
+        }
+    }
+
+    fun stopMidiTest() {
+        midiTestJob?.cancel()
+        midiTestJob = null
+        midiTestInput?.let { runCatching { it.close() } }
+        midiTestInput = null
+        midiTestOutput?.let { runCatching { it.close() } }
+        midiTestOutput = null
+        midiTesting = false
+    }
+
+    /** Plays A4 (with the current Kammerton A) on the MIDI output, to check the sound. */
+    fun playTestNote() {
+        if (running) return
+        val output = midiTestOutput ?: runCatching {
+            refreshDevices()
+            val name = preferences.midiOutputDevice?.takeIf { it in outputDevices } ?: defaultDevice(outputDevices)
+                ?: error("No MIDI output device found.")
+            services.midi.openOutput(name)
+        }.getOrElse {
+            message = "Could not open the MIDI output: ${it.message}"
+            return
+        }
+        // Kept open while the test runs; otherwise closed again after the note.
+        val keepOpen = midiTesting
+        if (keepOpen) midiTestOutput = output
+        launchSafely {
+            try {
+                Tuning.messages(preferences.referenceAHz).forEach(output::send)
+                output.send(MidiMessage.noteOn(TEST_NOTE, settings.midiOutVelocity))
+                delay(TEST_NOTE_MILLIS)
+                output.send(MidiMessage.noteOff(TEST_NOTE))
+            } finally {
+                if (!keepOpen) runCatching { output.close() }
+            }
+        }
+    }
+
     fun stopMicTest() {
         micTestJob?.cancel()
         micTestJob = null
@@ -356,8 +430,17 @@ class AppController(
 
     fun setShowGivenNotes(show: Boolean) = updatePreferences { it.copy(showGivenNotes = show) }
 
-    fun selectInputDevice(name: String) = updatePreferences { it.copy(midiInputDevice = name) }
-    fun selectOutputDevice(name: String) = updatePreferences { it.copy(midiOutputDevice = name) }
+    fun selectInputDevice(name: String) {
+        val wasTesting = midiTesting
+        stopMidiTest()
+        updatePreferences { it.copy(midiInputDevice = name) }
+        if (wasTesting) startMidiTest()
+    }
+    fun selectOutputDevice(name: String) {
+        midiTestOutput?.let { runCatching { it.close() } }
+        midiTestOutput = null
+        updatePreferences { it.copy(midiOutputDevice = name) }
+    }
 
     /** Java: Preferences → Kammerton A. Applies immediately to the output of a running exercise. */
     fun setReferenceA(hz: Double) {
@@ -441,6 +524,9 @@ class AppController(
 
     companion object {
         const val DEFAULT_SETUP_NAME = "Default"
+        private const val MIDI_TEST_HISTORY = 8
+        private const val TEST_NOTE = 69 // A4
+        private const val TEST_NOTE_MILLIS = 1000L
         private const val JAVA_SEQUENCER = "Real Time Sequencer"
         private const val AUTOSAVE_DELAY_MILLIS = 800L
     }

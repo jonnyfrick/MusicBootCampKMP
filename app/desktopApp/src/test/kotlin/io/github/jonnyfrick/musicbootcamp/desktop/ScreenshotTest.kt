@@ -23,6 +23,7 @@ import kotlinx.coroutines.runBlocking
 import org.jetbrains.skia.EncodedImageFormat
 import java.io.File
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
@@ -102,6 +103,21 @@ class ScreenshotTest {
         click(337f, tabY); snapshot("2-exercise")
         click(562f, tabY); snapshot("3-memory")
         click(787f, tabY); snapshot("4-preferences")
+
+        // MIDI test: keys arrive from the keyboard, the test note goes to MIDI Out.
+        click(TEST_MIDI_X, MIDI_TEST_BUTTONS_Y)
+        listOf(60 to 90, 64 to 70, 67 to 110).forEach { (note, velocity) ->
+            midi.keyboard.tryEmit(MidiMessage.noteOn(note, velocity))
+            midi.keyboard.tryEmit(MidiMessage.noteOff(note)) // releases are not listed
+            settle(5)
+        }
+        click(PLAY_TEST_NOTE_X, MIDI_TEST_BUTTONS_Y)
+        Thread.sleep(1300)
+        snapshot("4c-preferences-midi-test")
+        val testTone = synchronized(midi.sent) { midi.sent.filter { it.data1 == 69 && (it.isNoteOn || it.command == 0x80) } }
+        assertEquals(listOf(MidiMessage.noteOn(69, 80), MidiMessage.noteOff(69)), testTone, "test note A4 on and off")
+        click(TEST_MIDI_X, MIDI_TEST_BUTTONS_Y) // "Stop test"
+        synchronized(midi.sent) { midi.sent.clear() }
         click(MICROPHONE_RADIO_X, MICROPHONE_RADIO_Y); snapshot("4b-preferences-microphone")
         click(MIDI_RADIO_X, MIDI_RADIO_Y)
 
@@ -122,6 +138,11 @@ class ScreenshotTest {
         assertTrue(noteOns >= 2, "the exercise should have played notes")
     }
 }
+
+// Buttons of the MIDI test on the Preferences tab (MIDI input selected).
+private const val TEST_MIDI_X = 162f
+private const val PLAY_TEST_NOTE_X = 306f
+private const val MIDI_TEST_BUTTONS_Y = 480f
 
 // Radio buttons of the Input section on the Preferences tab.
 private const val MIDI_RADIO_X = 118f

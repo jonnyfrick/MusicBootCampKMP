@@ -41,6 +41,9 @@ changed and how the port was verified, see [MIGRATION.md](MIGRATION.md).
 
 Installable packages (DMG, MSI, DEB) for the current OS: `./gradlew :app:desktopApp:packageDistributionForCurrentOS`.
 
+Preferences has a MIDI test (shows the keys arriving from your keyboard, plays a test note on the
+MIDI output) and a microphone test (level meter and recognised note).
+
 On macOS the first microphone test asks for microphone permission for the app that started Gradle
 (Android Studio or the terminal).
 

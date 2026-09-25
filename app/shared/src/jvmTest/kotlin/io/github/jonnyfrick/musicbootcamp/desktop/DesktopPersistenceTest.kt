@@ -9,6 +9,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import java.io.File
 import java.nio.file.Files
+import org.junit.Assume.assumeTrue
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -34,6 +35,12 @@ class DesktopPersistenceTest {
 
     @Test
     fun importedSetupsSurviveTheFileStore() = runTest {
+        // The learned sequences are personal data and not in git; see core's Golden.LEARNED_DATA_HINT.
+        assumeTrue(
+            "learned sequences not present",
+            File(legacyFolder, "learned_sequences_settings_lin.xml").isFile &&
+                File(legacyFolder, "learned_sequences_settings_two_voices_mid_range.xml").isFile,
+        )
         val directory = Files.createTempDirectory("musicbootcamp-test").toFile()
         try {
             val repository = SetupRepository(FileDocumentStore(directory))

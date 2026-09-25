@@ -13,6 +13,7 @@ import kotlinx.serialization.json.double
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import org.junit.Assume.assumeTrue
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -24,9 +25,12 @@ class GoldenMasterTest {
 
     @Test
     fun learnedSequenceFilesImportExactlyLikeJava() {
-        for (file in listOf("learned_sequences_settings_lin.xml", "learned_sequences_settings_two_voices_mid_range.xml")) {
+        assumeTrue(Golden.LEARNED_DATA_HINT, Golden.learnedDataAvailable())
+        for (file in Golden.learnedFiles) {
             val memory = LegacyImport.parseLearnedSequences(Golden.text(file))
-            val expected = Golden.text("canonical_" + file.removeSuffix(".xml") + ".txt")
+            val expected = Golden.textOrNull("canonical_" + file.removeSuffix(".xml") + ".txt")
+            assumeTrue("canonical dump of $file missing — regenerate the fixtures", expected != null)
+            expected!!
             Golden.assertSameLines(expected, memory.canonicalText(), file)
             assertEquals(expected.count { it == '\n' }, memory.size, "$file sequence count")
         }
@@ -44,27 +48,32 @@ class GoldenMasterTest {
             assertEquals(parameters.int("numberOfVoices"), result.legacySettings.numberOfVoices, "$file voices in file")
             assertEquals(entry.getValue("referenceAHz").jsonPrimitive.double, result.legacySettings.referenceAHz, "$file reference A")
             assertEquals(entry.string("currentSettingsFilePath"), result.legacySettings.currentSettingsFilePath, file)
-            assertEquals(entry.string("learnedSequencesFile"), result.learnedSequencesFileName, file)
+            assertEquals(entry.string("learnedSequencesFile"), result.legacySettings.learnedSequencesFileName, file)
             assertEquals(entry.string("midiInDevice"), result.legacySettings.midiInputDevice, file)
             assertEquals(entry.string("midiOutDevice"), result.legacySettings.midiOutputDevice, file)
 
-            val memory = result.setup.memory()
-            assertEquals(entry.int("learnedCount"), memory.size, "$file learned count")
-            assertEquals(entry.string("learnedSha256"), Golden.sha256(memory.canonicalText()), "$file learned content")
-            assertEquals(emptyList(), result.warnings, "$file warnings")
+            // The learned sequences themselves are only checked where the (untracked) files exist.
+            if (Golden.learnedDataAvailable()) {
+                val memory = result.setup.memory()
+                assertEquals(entry.int("learnedCount"), memory.size, "$file learned count")
+                assertEquals(entry.string("learnedSha256"), Golden.sha256(memory.canonicalText()), "$file learned content")
+                assertEquals(emptyList(), result.warnings, "$file warnings")
+            }
         }
     }
 
     @Test
     fun practiceScenariosReproduceJavaStepByStep() {
-        val scenarios = listOf(
-            "scenario_mono_fresh.json",
-            "scenario_mono_lin_memory.json",
-            "scenario_two_voices_memory.json",
-            "scenario_two_voices_no_learning.json",
-            "scenario_two_voices_fresh_learning.json",
-        )
-        for (file in scenarios) runScenario(file)
+        for (file in listOf("scenario_mono_fresh.json", "scenario_two_voices_no_learning.json", "scenario_two_voices_fresh_learning.json")) {
+            runScenario(file)
+        }
+    }
+
+    /** These start from your real learned sequences. */
+    @Test
+    fun practiceScenariosWithLearnedSequencesReproduceJavaStepByStep() {
+        assumeTrue(Golden.LEARNED_DATA_HINT, Golden.learnedDataAvailable())
+        for (file in listOf("scenario_mono_lin_memory.json", "scenario_two_voices_memory.json")) runScenario(file)
     }
 
     private fun runScenario(file: String) {

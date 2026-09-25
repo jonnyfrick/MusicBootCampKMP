@@ -48,7 +48,11 @@ Java code itself defines the expected results:
      Java code draws, every MIDI message it sends and the learned-sequence memory after
      every step.
 2. The fixtures are in `core/src/jvmTest/resources/golden/`, together with copies of
-   the real settings and learned-sequence XML files they were produced from.
+   the real settings XML files they were produced from. The learned sequences are personal
+   practice data and **not in git** (`.gitignore`: `learned_sequences_*`,
+   `canonical_learned_sequences_*`). Without them the tests that need them are skipped; to run
+   them, copy the files from the Java app and regenerate the fixtures (below):
+   `cp ~/Dropbox/MusicBootCampRepo/MusicBootCamp/learned_sequences_*.xml core/src/jvmTest/resources/golden/`
 3. `GoldenMasterTest` replays them. A `ReplayRandomSource` hands the Kotlin code
    exactly the numbers Java drew and fails if the Kotlin code asks for a random number with a
    different bound, or asks for a different count of them. Covered:

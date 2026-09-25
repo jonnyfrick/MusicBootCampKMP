@@ -17,3 +17,7 @@ captures
 !*.xcworkspace/contents.xcworkspacedata
 **/xcshareddata/WorkspaceSettings.xcsettings
 node_modules/
+
+# Personal practice data (learned sequences) copied from the Java app for the golden master tests
+**/learned_sequences_*
+**/canonical_learned_sequences_*

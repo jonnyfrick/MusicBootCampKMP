@@ -80,6 +80,8 @@ data class AppPreferences(
      * answer to the previous step, in milliseconds.
      */
     val lateAnswerToleranceMillis: Int = DEFAULT_LATE_ANSWER_TOLERANCE_MILLIS,
+    /** Microphone input: record each exercise (audio and event log) to tune the pitch detection. */
+    val recordMicrophone: Boolean = false,
 )
 
 const val DEFAULT_LATE_ANSWER_TOLERANCE_MILLIS = 150

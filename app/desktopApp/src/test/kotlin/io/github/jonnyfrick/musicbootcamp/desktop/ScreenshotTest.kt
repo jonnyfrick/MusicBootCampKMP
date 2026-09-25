@@ -76,7 +76,9 @@ class ScreenshotTest {
                 override fun close() = Unit
             }
         }
-        val services = PlatformServices(midi, store, legacyFiles = { null }, audio = microphone)
+        // Never records anything: the recording switch stays off in the screenshots.
+        val recordings = FileRecordingStore(File("build/dev-data/recordings"))
+        val services = PlatformServices(midi, store, legacyFiles = { null }, audio = microphone, recordings = recordings)
 
         val scene = ImageComposeScene(width = 900, height = 1100, density = Density(1f)) { App(services) }
         var time = 0L

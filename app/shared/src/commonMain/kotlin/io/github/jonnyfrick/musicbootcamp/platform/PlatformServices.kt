@@ -1,5 +1,6 @@
 package io.github.jonnyfrick.musicbootcamp.platform
 
+import io.github.jonnyfrick.musicbootcamp.core.audio.RecordingFile
 import io.github.jonnyfrick.musicbootcamp.core.midi.MidiMessage
 import io.github.jonnyfrick.musicbootcamp.core.midi.MidiOutput
 import io.github.jonnyfrick.musicbootcamp.core.persistence.DocumentStore
@@ -66,6 +67,15 @@ class UnsupportedAudioInput(override val unavailableReason: String) : AudioInput
     override fun open(name: String?): AudioInputPort = throw UnsupportedOperationException(unavailableReason)
 }
 
+/** Where practice sessions with the microphone are recorded (audio and event log). */
+interface RecordingStore {
+    /** The folder, to show the user. */
+    val location: String
+
+    /** Starts a new recording, named after the current date and time. */
+    fun create(): RecordingFile
+}
+
 /** A Java-version settings file chosen by the user, with access to the files next to it. */
 class LegacySelection(
     val suggestedName: String,
@@ -85,6 +95,8 @@ class PlatformServices(
     /** Null where importing old files makes no sense (no file system access). */
     val legacyFiles: LegacyFilePicker?,
     val audio: AudioInputBackend = UnsupportedAudioInput("Microphone input is only implemented in the desktop app so far."),
+    /** Null where there is no file system to record into. */
+    val recordings: RecordingStore? = null,
 ) {
     companion object {
         /** For Android, iOS and web until their MIDI and storage implementations exist. */

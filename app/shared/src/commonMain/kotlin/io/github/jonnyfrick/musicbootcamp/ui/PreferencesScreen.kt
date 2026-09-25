@@ -133,6 +133,17 @@ private fun MicrophoneSettings(controller: AppController) {
         "A note you strike up to this long after the next note has started still answers the previous one, " +
             "if that had no answer yet.",
     )
+    controller.recordingsLocation?.let { location ->
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Switch(checked = preferences.recordMicrophone, onCheckedChange = controller::setRecordMicrophone, enabled = !running)
+            Spacer(Modifier.width(12.dp))
+            Text("Record exercises")
+        }
+        Hint(
+            "Saves the microphone signal (WAV, about 5 MB per minute) and a log of the notes played and recognised " +
+                "to $location, to tune the recognition with real sound.",
+        )
+    }
     Spacer(Modifier.height(8.dp))
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         if (controller.micTesting) {

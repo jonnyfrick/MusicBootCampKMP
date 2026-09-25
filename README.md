@@ -50,6 +50,15 @@ MIDI output) and a microphone test (level meter and recognised note).
 On macOS the first microphone test asks for microphone permission for the app that started Gradle
 (Android Studio or the terminal).
 
+With "Record exercises" (Preferences → Microphone) every exercise with microphone input is saved to
+`recordings/` in the data directory: the microphone signal as WAV plus a JSON log of the notes the
+app played, the notes recognised and the evaluations. To see how the current pitch detection handles
+them:
+
+```bash
+./gradlew :core:jvmTest --tests '*RecordingReplayTest*' --rerun -Pmusicbootcamp.recordings=<folder or .wav>
+```
+
 ### Other targets
 
 `./gradlew :app:androidApp:assembleDebug`, `./gradlew :app:webApp:wasmJsBrowserDevelopmentRun`,

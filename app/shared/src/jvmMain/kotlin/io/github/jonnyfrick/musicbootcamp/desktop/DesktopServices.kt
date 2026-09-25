@@ -21,6 +21,7 @@ fun desktopServices(dataDirectory: File = defaultDataDirectory()) = PlatformServ
     documents = FileDocumentStore(dataDirectory),
     legacyFiles = AwtLegacyFilePicker(),
     audio = JavaSoundAudioInput(),
+    recordings = FileRecordingStore(File(dataDirectory, "recordings")),
 )
 
 /**

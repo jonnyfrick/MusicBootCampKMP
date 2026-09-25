@@ -187,6 +187,12 @@ messages, so the exercise logic is the same as with a MIDI keyboard.
   default 150 ms, `lateAnswerToleranceMillis` in `preferences.json`) counts from the key stroke:
   `NoteTracker.detectionDelay` (about 58 ms) is added, because the note reaches the exercise only
   once it is recognised. Audio buffering (one 11.6 ms block on the desktop) is not added.
+- Recording (Preferences → "Record exercises", off by default): `core/audio/SessionRecorder` writes
+  the audio the detection gets as a WAV file and a JSON log (`RecordingLog`: app note on/off,
+  steps, detected and accepted notes, evaluations, each with its sample position) to
+  `recordings/session-<date>_<time>.wav/.json` in the data directory. Exercise events are placed at
+  the end of the audio received so far (±1 block). `RecordingReplayTest` replays them through
+  `NoteTracker` (see README). Recordings are personal data: never commit them.
 - Desktop capture: `app/shared/src/jvmMain/.../JavaSoundAudio.kt` (javax.sound.sampled, 44.1 kHz
   mono). Other platforms have the `AudioInputBackend` interface but no implementation yet
   (Android `AudioRecord`, iOS `AVAudioEngine`, web `getUserMedia` + AudioWorklet).

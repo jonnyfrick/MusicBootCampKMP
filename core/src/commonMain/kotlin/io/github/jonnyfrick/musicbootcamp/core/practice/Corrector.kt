@@ -14,6 +14,9 @@ sealed interface Corrector {
     fun addRecorded(note: Int)
     fun resetRecorded()
 
+    /** Whether enough key presses were recorded that further ones would not count for this step. */
+    fun hasAnswer(): Boolean
+
     /** Evaluates the step that just ended and updates the predecessor memory. */
     fun correct(): Boolean
 
@@ -52,6 +55,8 @@ class SingleNoteCorrector(private val memorySize: Int) : Corrector {
         recorded = -1
     }
 
+    override fun hasAnswer(): Boolean = recorded >= 0
+
     override fun correct(): Boolean {
         if (given != 0) predecessors.add(given)
         if (predecessors.size > memorySize) predecessors.removeAt(0)
@@ -87,6 +92,8 @@ class TwoVoicesCorrector(private val memorySize: Int) : Corrector {
     override fun resetRecorded() {
         recorded.clear()
     }
+
+    override fun hasAnswer(): Boolean = recorded.size >= 2
 
     override fun correct(): Boolean {
         if (given.isEmpty()) return true // nothing was given before the first step

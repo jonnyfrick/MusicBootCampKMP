@@ -138,6 +138,15 @@ off-screen into `app/desktopApp/build/screenshots` and runs an exercise against 
   Within the range the behaviour and the consumed random numbers are unchanged, so the golden master
   tests still pass. Tests: `CoreTest.learnedSequencesOutsideTheRangeDoNotLeadTheExerciseAway`,
   `CoreTest.randomStepsFindBackIntoTheRange`.
+- **Late answers with the microphone.** In Java a key press counted for whichever step was running
+  when it arrived. With microphone input, a step still without an answer when the next note starts
+  now waits for the late-answer tolerance: key presses in that time answer the previous step
+  (`PracticeSession.step(deferEvaluation = true)`, `PracticeRunner(lateAnswerTolerance = …)`,
+  capped at half the step period). The next note still starts on time. A step answered in time is
+  evaluated at once as before, so the exercise and the random numbers consumed are unchanged; only
+  a deferred evaluation stores its mistake after the next note was chosen, so it can influence the
+  steps after the next one only. MIDI input keeps the Java behaviour (tolerance 0). Tests:
+  `LateAnswerTest`.
 - **Given notes hidden by default.** The point is to hear them; "Show notes" on the Practice tab
   reveals them (stored in `preferences.json`).
 - **Settings edited in place** (no OK/Cancel dialogs); they are locked while an exercise runs,
@@ -168,8 +177,16 @@ messages, so the exercise logic is the same as with a MIDI keyboard.
   hop, then the pitch must agree over two windows. The window just before the stroke is removed
   from the power spectrum, so a still ringing previous note (legato, sustain pedal) does not merge
   with the new one into a lower common pitch. Latency about 50 ms. The Kammerton A is taken into account.
-- `core/practice/OwnSoundGate` – without headphones the microphone hears the app's own notes;
-  input is ignored while an app note sounds and 200 ms after it.
+- `core/practice/OwnSoundGate` – without headphones the microphone hears the app's own notes.
+  While an app note sounds and 200 ms after it, detected notes are ignored if they are that note
+  or an octave of it (a typical detection error); other notes count. (At first all input was
+  ignored then, which left too little time at fast tempos: at 1 s breathing time and 50 % sustain
+  only the last 300 ms of a step.) A correct answer played while the same note still sounds is
+  still ignored; subtracting the app's own sound from the microphone signal is planned.
+- Late answers: see "Deliberate changes". The tolerance (Preferences → "Late answers", 0–300 ms,
+  default 150 ms, `lateAnswerToleranceMillis` in `preferences.json`) counts from the key stroke:
+  `NoteTracker.detectionDelay` (about 58 ms) is added, because the note reaches the exercise only
+  once it is recognised. Audio buffering (one 11.6 ms block on the desktop) is not added.
 - Desktop capture: `app/shared/src/jvmMain/.../JavaSoundAudio.kt` (javax.sound.sampled, 44.1 kHz
   mono). Other platforms have the `AudioInputBackend` interface but no implementation yet
   (Android `AudioRecord`, iOS `AVAudioEngine`, web `getUserMedia` + AudioWorklet).

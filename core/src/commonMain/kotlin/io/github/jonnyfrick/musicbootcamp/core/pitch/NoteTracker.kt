@@ -6,6 +6,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 /** A note recognised from audio: one per key stroke. */
 data class DetectedNote(
@@ -50,6 +52,12 @@ class NoteTracker(
     private var candidate: Int? = null
     private var candidateCount = 0
     private val candidateFrequencies = mutableListOf<Double>()
+
+    /**
+     * The longest time from a key stroke to its note being confirmed: the hop with the onset,
+     * the settling and the confirming windows. Audio buffering comes on top.
+     */
+    val detectionDelay: Duration = ((SETTLE_HOPS + confirmFrames) * hop).toDouble().div(sampleRate).seconds
 
     /** RMS of the latest hop, for a level meter. */
     var level: Double = 0.0

@@ -21,6 +21,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 
 /** Live figures of a running exercise, for the UI. */
 data class PracticeStatus(
@@ -39,6 +41,10 @@ data class PracticeStatus(
  *
  * All session access — steps and incoming MIDI — happens on one confined
  * dispatcher, so the session needs no locking.
+ *
+ * With a [lateAnswerTolerance], a step still without an answer when the next note starts is
+ * evaluated only after that time, so a key press arriving shortly after the change counts for
+ * the step it answers. It is capped at half the step period.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class PracticeRunner(
@@ -48,11 +54,14 @@ class PracticeRunner(
     private val output: MidiOutput,
     private val input: Flow<MidiMessage>,
     random: RandomSource = KotlinRandomSource(),
+    lateAnswerTolerance: Duration = Duration.ZERO,
     private val sessionDispatcher: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1),
 ) {
     private val session = PracticeSession(settings, memory, random, output)
     private val _status = MutableStateFlow(PracticeStatus())
     val status: StateFlow<PracticeStatus> = _status.asStateFlow()
+
+    private val tolerance = minOf(lateAnswerTolerance, (settings.stepPeriodMillis / 2).milliseconds)
 
     private var jobs: List<Job> = emptyList()
 
@@ -60,12 +69,13 @@ class PracticeRunner(
         if (jobs.isNotEmpty()) return
         _status.value = PracticeStatus(running = true)
         val inputJob = scope.launch(sessionDispatcher) {
-            input.collect { session.onMidiInput(it) }
+            input.collect { message -> session.onMidiInput(message)?.let(::report) }
         }
         val clockJob = scope.launch(sessionDispatcher) {
             // Like Timer.schedule(task, 0, period): first step immediately, then fixed delay.
             while (isActive) {
-                val result = session.step()
+                session.finishEvaluation()?.let(::report)
+                val result = session.step(deferEvaluation = tolerance > Duration.ZERO)
                 result.startedNotes.forEach { note ->
                     launch {
                         delay(settings.noteDurationMillis)
@@ -73,6 +83,12 @@ class PracticeRunner(
                     }
                 }
                 _status.update { it.after(result) }
+                if (result.evaluationPending) {
+                    launch {
+                        delay(tolerance)
+                        session.finishEvaluation()?.let(::report)
+                    }
+                }
                 delay(settings.stepPeriodMillis)
             }
         }
@@ -85,6 +101,17 @@ class PracticeRunner(
         jobs = emptyList()
         withContext(sessionDispatcher) { output.send(MidiMessage.allNotesOff()) }
         _status.update { it.copy(running = false) }
+    }
+
+    private fun report(evaluation: Evaluation) {
+        _status.update {
+            it.copy(
+                correct = it.correct + if (evaluation.correct) 1 else 0,
+                wrong = it.wrong + if (evaluation.correct) 0 else 1,
+                storedMistakes = it.storedMistakes + if (evaluation.storedMistake) 1 else 0,
+                lastCorrect = evaluation.correct,
+            )
+        }
     }
 
     private fun PracticeStatus.after(result: StepResult) = copy(

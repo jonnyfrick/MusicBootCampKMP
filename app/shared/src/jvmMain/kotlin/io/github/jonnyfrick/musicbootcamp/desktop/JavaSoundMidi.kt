@@ -16,7 +16,14 @@ import javax.sound.midi.ShortMessage
 import javax.sound.midi.Transmitter
 import javax.sound.midi.MidiMessage as JavaMidiMessage
 
-/** MIDI via `javax.sound.midi`, like the Java version (`BootCampMidiInterface`). */
+/**
+ * MIDI via `javax.sound.midi`, like the Java version (`BootCampMidiInterface`).
+ *
+ * Devices are opened once and stay open until the app ends; closing a port only detaches
+ * it. On macOS, `MidiDevice.close()` on a MIDI input can block forever in native code
+ * (`MidiInDevice.nStop` against its reader thread, e.g. after the keyboard was unplugged),
+ * which froze the UI. The Java version never closed its devices either.
+ */
 class JavaSoundMidiBackend : MidiBackend {
     override val unavailableReason: String? = null
 
@@ -26,13 +33,19 @@ class JavaSoundMidiBackend : MidiBackend {
     override fun openInput(name: String): MidiInputPort {
         val device = devices { it.maxTransmitters != 0 }.firstOrNull { it.deviceInfo.name == name }
             ?: throw MidiUnavailableException("MIDI input '$name' is not connected")
-        return JavaSoundInput(device)
+        return JavaSoundInput(ensureOpen(device))
     }
 
     override fun openOutput(name: String): MidiOutputPort {
         val device = devices { it.maxReceivers != 0 }.firstOrNull { it.deviceInfo.name == name }
             ?: throw MidiUnavailableException("MIDI output '$name' is not connected")
-        return JavaSoundOutput(device)
+        return JavaSoundOutput(ensureOpen(device))
+    }
+
+    @Synchronized
+    private fun ensureOpen(device: MidiDevice): MidiDevice {
+        if (!device.isOpen) device.open()
+        return device
     }
 
     private fun devices(filter: (MidiDevice) -> Boolean): List<MidiDevice> =
@@ -41,14 +54,9 @@ class JavaSoundMidiBackend : MidiBackend {
         }
 }
 
-private class JavaSoundOutput(private val device: MidiDevice) : MidiOutputPort {
-    private val openedHere = !device.isOpen
-    private val receiver: Receiver
-
-    init {
-        if (openedHere) device.open()
-        receiver = device.receiver
-    }
+/** One receiver of an open output device; [close] releases only the receiver. */
+private class JavaSoundOutput(device: MidiDevice) : MidiOutputPort {
+    private val receiver: Receiver = device.receiver
 
     override fun send(message: MidiMessage) {
         receiver.send(ShortMessage(message.status, message.data1, message.data2), -1)
@@ -56,23 +64,21 @@ private class JavaSoundOutput(private val device: MidiDevice) : MidiOutputPort {
 
     override fun close() {
         receiver.close()
-        if (openedHere) device.close()
     }
 }
 
-private class JavaSoundInput(private val device: MidiDevice) : MidiInputPort {
-    private val openedHere = !device.isOpen
-    private val transmitter: Transmitter
+/** One transmitter of an open input device; [close] detaches it without closing the device. */
+private class JavaSoundInput(device: MidiDevice) : MidiInputPort {
+    private val transmitter: Transmitter = device.transmitter
     private val flow = MutableSharedFlow<MidiMessage>(extraBufferCapacity = 256, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    @Volatile private var closed = false
 
     override val messages: Flow<MidiMessage> = flow.asSharedFlow()
 
     init {
-        if (openedHere) device.open()
-        transmitter = device.transmitter
         transmitter.receiver = object : Receiver {
             override fun send(message: JavaMidiMessage, timeStamp: Long) {
-                if (message is ShortMessage) flow.tryEmit(MidiMessage(message.status, message.data1, message.data2))
+                if (!closed && message is ShortMessage) flow.tryEmit(MidiMessage(message.status, message.data1, message.data2))
             }
 
             override fun close() = Unit
@@ -80,7 +86,8 @@ private class JavaSoundInput(private val device: MidiDevice) : MidiInputPort {
     }
 
     override fun close() {
+        closed = true
+        transmitter.receiver = null
         transmitter.close()
-        if (openedHere) device.close()
     }
 }

@@ -113,6 +113,10 @@ off-screen into `app/desktopApp/build/screenshots` and runs an exercise against 
   learned sequences when an exercise stops and when the app closes. "Save setup as…" copies a setup.
 - **Global preferences.** MIDI devices and Kammerton A are machine settings (`preferences.json`)
   instead of being stored in every setup file. Importing a Java setup adopts its Kammerton A.
+- **MIDI devices stay open.** Closing a MIDI input on macOS can block forever in Java's native
+  code (`MidiInDevice.nStop` against its reader thread, e.g. after the keyboard was unplugged);
+  this froze the app when a MIDI test was stopped. Devices are now opened once and only detached
+  afterwards — which is what the Java version did too (its `closeDevices()` was commented out).
 - **Default MIDI input** skips Java's built-in "Real Time Sequencer" (the Java app picked it
   when no device was saved, which is never a keyboard).
 - **Crash cases handled.** Java crashed (and its timer silently died) on: all interval weights 0,

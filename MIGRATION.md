@@ -113,6 +113,13 @@ off-screen into `app/desktopApp/build/screenshots` and runs an exercise against 
   learned sequences when an exercise stops and when the app closes. "Save setup as…" copies a setup.
 - **Global preferences.** MIDI devices and Kammerton A are machine settings (`preferences.json`)
   instead of being stored in every setup file. Importing a Java setup adopts its Kammerton A.
+- **MIDI devices can be plugged in while the app runs (macOS).** Java's own CoreMIDI support
+  reads the device list only once, so a keyboard connected after the start was never found
+  (reproduced with a virtual CoreMIDI source). The desktop app now lists and opens MIDI devices
+  through [CoreMIDI4J](https://github.com/DerekCook/CoreMidi4J) (EPL 1.0), which sees devices
+  appear and disappear; the app updates its lists and shows what was connected or disconnected.
+  Device names now include the device, e.g. "Digital Keyboard Anschluss 1" instead of "Anschluss 1".
+  `MidiHotplugTest` plugs a virtual keyboard in and out (a small Swift program; macOS only).
 - **MIDI devices stay open.** Closing a MIDI input on macOS can block forever in Java's native
   code (`MidiInDevice.nStop` against its reader thread, e.g. after the keyboard was unplugged);
   this froze the app when a MIDI test was stopped. Devices are now opened once and only detached

@@ -5,6 +5,7 @@ import io.github.jonnyfrick.musicbootcamp.core.midi.MidiOutput
 import io.github.jonnyfrick.musicbootcamp.core.persistence.DocumentStore
 import io.github.jonnyfrick.musicbootcamp.core.persistence.InMemoryDocumentStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 
 /** An opened MIDI output (synth or instrument). */
 interface MidiOutputPort : MidiOutput {
@@ -24,6 +25,9 @@ interface MidiBackend {
 
     fun inputDevices(): List<String>
     fun outputDevices(): List<String>
+
+    /** Emits whenever devices are plugged in or removed (where the platform can tell). */
+    val devicesChanged: Flow<Unit> get() = emptyFlow()
 
     /** Opens the named device; throws with a readable message if that fails. */
     fun openInput(name: String): MidiInputPort

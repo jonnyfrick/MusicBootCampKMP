@@ -41,6 +41,9 @@ changed and how the port was verified, see [MIGRATION.md](MIGRATION.md).
 
 Installable packages (DMG, MSI, DEB) for the current OS: `./gradlew :app:desktopApp:packageDistributionForCurrentOS`.
 
+MIDI devices can be plugged in and out while the app runs; the device lists update by themselves
+(on macOS via [CoreMIDI4J](https://github.com/DerekCook/CoreMidi4J)).
+
 Preferences has a MIDI test (shows the keys arriving from your keyboard, plays a test note on the
 MIDI output) and a microphone test (level meter and recognised note).
 

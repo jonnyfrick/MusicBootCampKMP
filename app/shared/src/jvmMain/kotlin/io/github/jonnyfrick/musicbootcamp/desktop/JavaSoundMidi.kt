@@ -8,6 +8,10 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.callbackFlow
+import uk.co.xfactorylibrarians.coremidi4j.CoreMidiDeviceProvider
+import uk.co.xfactorylibrarians.coremidi4j.CoreMidiNotification
 import javax.sound.midi.MidiDevice
 import javax.sound.midi.MidiSystem
 import javax.sound.midi.MidiUnavailableException
@@ -19,6 +23,11 @@ import javax.sound.midi.MidiMessage as JavaMidiMessage
 /**
  * MIDI via `javax.sound.midi`, like the Java version (`BootCampMidiInterface`).
  *
+ * On macOS the devices come from CoreMIDI4J: Java's own CoreMIDI support reads the device
+ * list only once, so a keyboard plugged in after the start was never found. CoreMIDI4J
+ * sees devices appear and disappear and reports it through [devicesChanged]. On other
+ * systems it simply returns Java's own devices.
+ *
  * Devices are opened once and stay open until the app ends; closing a port only detaches
  * it. On macOS, `MidiDevice.close()` on a MIDI input can block forever in native code
  * (`MidiInDevice.nStop` against its reader thread, e.g. after the keyboard was unplugged),
@@ -27,20 +36,36 @@ import javax.sound.midi.MidiMessage as JavaMidiMessage
 class JavaSoundMidiBackend : MidiBackend {
     override val unavailableReason: String? = null
 
-    override fun inputDevices(): List<String> = devices { it.maxTransmitters != 0 }.map { it.deviceInfo.name }.distinct()
-    override fun outputDevices(): List<String> = devices { it.maxReceivers != 0 }.map { it.deviceInfo.name }.distinct()
+    override fun inputDevices(): List<String> = devices { it.maxTransmitters != 0 }.map { displayName(it) }.distinct()
+    override fun outputDevices(): List<String> = devices { it.maxReceivers != 0 }.map { displayName(it) }.distinct()
+
+    override val devicesChanged: Flow<Unit> = callbackFlow {
+        val listener = CoreMidiNotification { trySend(Unit) }
+        val registered = runCatching {
+            CoreMidiDeviceProvider.isLibraryLoaded() && run {
+                CoreMidiDeviceProvider.addNotificationListener(listener)
+                true
+            }
+        }.getOrDefault(false)
+        awaitClose {
+            if (registered) runCatching { CoreMidiDeviceProvider.removeNotificationListener(listener) }
+        }
+    }
 
     override fun openInput(name: String): MidiInputPort {
-        val device = devices { it.maxTransmitters != 0 }.firstOrNull { it.deviceInfo.name == name }
+        val device = devices { it.maxTransmitters != 0 }.firstOrNull { displayName(it) == name }
             ?: throw MidiUnavailableException("MIDI input '$name' is not connected")
         return JavaSoundInput(ensureOpen(device))
     }
 
     override fun openOutput(name: String): MidiOutputPort {
-        val device = devices { it.maxReceivers != 0 }.firstOrNull { it.deviceInfo.name == name }
+        val device = devices { it.maxReceivers != 0 }.firstOrNull { displayName(it) == name }
             ?: throw MidiUnavailableException("MIDI output '$name' is not connected")
         return JavaSoundOutput(ensureOpen(device))
     }
+
+    /** CoreMIDI4J prefixes its device names; users know them without it. */
+    private fun displayName(device: MidiDevice): String = device.deviceInfo.name.removePrefix(CORE_MIDI_PREFIX)
 
     @Synchronized
     private fun ensureOpen(device: MidiDevice): MidiDevice {
@@ -48,10 +73,17 @@ class JavaSoundMidiBackend : MidiBackend {
         return device
     }
 
-    private fun devices(filter: (MidiDevice) -> Boolean): List<MidiDevice> =
-        MidiSystem.getMidiDeviceInfo().mapNotNull { info ->
+    /** The current devices; on macOS as CoreMIDI4J sees them right now, instead of Java's list from the start. */
+    private fun devices(filter: (MidiDevice) -> Boolean): List<MidiDevice> {
+        val infos = runCatching { CoreMidiDeviceProvider.getMidiDeviceInfo() }.getOrElse { MidiSystem.getMidiDeviceInfo() }
+        return infos.mapNotNull { info ->
             runCatching { MidiSystem.getMidiDevice(info) }.getOrNull()?.takeIf(filter)
         }
+    }
+
+    private companion object {
+        const val CORE_MIDI_PREFIX = "CoreMIDI4J - "
+    }
 }
 
 /** One receiver of an open output device; [close] releases only the receiver. */

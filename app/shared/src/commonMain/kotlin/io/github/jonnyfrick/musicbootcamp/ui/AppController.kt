@@ -126,6 +126,22 @@ class AppController(
             refreshDevices()
             ready = true
         }
+        launchSafely { services.midi.devicesChanged.collect { onMidiDevicesChanged() } }
+    }
+
+    /** A MIDI device was plugged in or removed: update the lists and say what changed. */
+    private fun onMidiDevicesChanged() {
+        val before = (inputDevices + outputDevices).toSet()
+        refreshDevices()
+        val after = (inputDevices + outputDevices).toSet()
+        val added = after - before
+        val removed = before - after
+        if (added.isEmpty() && removed.isEmpty()) return
+        message = buildList {
+            if (added.isNotEmpty()) add("MIDI connected: ${added.joinToString()}")
+            if (removed.isNotEmpty()) add("MIDI disconnected: ${removed.joinToString()}")
+            if (running) add("Stop and restart the exercise to use it.")
+        }.joinToString(". ")
     }
 
     // ------------------------------------------------------------------ setups

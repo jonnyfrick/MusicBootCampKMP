@@ -75,6 +75,8 @@ kotlin {
         }
         jvmMain.dependencies {
             implementation(libs.kotlinx.coroutines.swing)
+            // CoreMIDI access on macOS with hot-plugging; plain Java Sound elsewhere
+            implementation(libs.coremidi4j)
         }
         jvmTest.dependencies {
             implementation(libs.kotlinx.coroutines.test)

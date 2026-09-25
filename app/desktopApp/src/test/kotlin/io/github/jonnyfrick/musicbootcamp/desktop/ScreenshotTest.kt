@@ -33,7 +33,8 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalComposeUiApi::class)
 class ScreenshotTest {
 
-    private val legacyFolder = File("../../core/src/jvmTest/resources/golden")
+    /** The shareable synthetic data set, so the screenshots never depend on personal data. */
+    private val legacyFolder = File("../../core/src/jvmTest/resources/golden/synthetic")
     private val output = File("build/screenshots").apply { mkdirs() }
 
     private class FakeMidi : MidiBackend {
@@ -59,8 +60,8 @@ class ScreenshotTest {
         val store = InMemoryDocumentStore()
         runBlocking {
             val imported = LegacyImport.importSetup(
-                "lin",
-                File(legacyFolder, "settings_lin.xml").readText(),
+                "Demo",
+                File(legacyFolder, "settings_mono.xml").readText(),
             ) { File(legacyFolder, it).takeIf(File::isFile)?.readText() }
             SetupRepository(store).save(imported.setup)
         }
@@ -107,7 +108,7 @@ class ScreenshotTest {
         click(112f, tabY)
         click(142f, 396f) // Go!
         settle(40)
-        Thread.sleep(2000) // settings_lin: one step every 0.81 s
+        Thread.sleep(3000) // synthetic mono setup: one step every 1.2 s
         settle(40)
         snapshot("5-running")
         click(230f, 396f) // Stop

@@ -47,12 +47,17 @@ Java code itself defines the expected results:
      classes with scripted input and writes fixtures. It records every random number the
      Java code draws, every MIDI message it sends and the learned-sequence memory after
      every step.
-2. The fixtures are in `core/src/jvmTest/resources/golden/`, together with copies of
-   the real settings XML files they were produced from. The learned sequences are personal
-   practice data and **not in git** (`.gitignore`: `learned_sequences_*`,
-   `canonical_learned_sequences_*`). Without them the tests that need them are skipped; to run
-   them, copy the files from the Java app and regenerate the fixtures (below):
-   `cp ~/Dropbox/MusicBootCampRepo/MusicBootCamp/learned_sequences_*.xml core/src/jvmTest/resources/golden/`
+2. The fixtures come in two sets in `core/src/jvmTest/resources/golden/`:
+   - **`synthetic/` (in git, always runs):** a small generated data set (`SyntheticData.java`,
+     97 monophonic and 82 two-voice learned sequences on all 5 priority levels, written by the Java
+     app's own XML writer) with settings files, canonical dumps and three practice scenarios
+     (1,050 steps that take 245 learned sequences). Sequences reaching outside the practice range
+     start outside it, so they test the import but are never played (see the range fix below).
+   - **`golden/` itself: your own data.** The settings files are in git; the learned sequences
+     are personal practice data and **not in git** (`.gitignore`). Without them the three tests
+     that need them are skipped. To run them, copy them from the Java app:
+     `cp ~/Dropbox/MusicBootCampRepo/MusicBootCamp/learned_sequences_*.xml core/src/jvmTest/resources/golden/`
+     and regenerate the personal fixtures (below).
 3. `GoldenMasterTest` replays them. A `ReplayRandomSource` hands the Kotlin code
    exactly the numbers Java drew and fails if the Kotlin code asks for a random number with a
    different bound, or asks for a different count of them. Covered:
@@ -72,6 +77,10 @@ To regenerate the fixtures (e.g. after changing the Java code):
 ```bash
 cd ~/Dropbox/MusicBootCampRepo/MusicBootCamp && git switch golden_master_harness
 javac -d /tmp/mbc -cp lib/swing-layout-1.0.3.jar $(find src test -name '*.java')
+# synthetic set: inputs and fixtures are written into the working directory
+(cd ~/Developer/MusicBootCampKMP/core/src/jvmTest/resources/golden/synthetic && \
+  java -Djava.awt.headless=true -cp /tmp/mbc:$OLDPWD/lib/swing-layout-1.0.3.jar musicbootcamp.GoldenMasterGenerator . synthetic)
+# personal set: reads your files in the Java project, writes only the fixtures
 java -Djava.awt.headless=true -cp /tmp/mbc:lib/swing-layout-1.0.3.jar musicbootcamp.GoldenMasterGenerator ~/Developer/MusicBootCampKMP/core/src/jvmTest/resources/golden
 ```
 

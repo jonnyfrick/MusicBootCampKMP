@@ -1,0 +1,39 @@
+<replay_parameters_>
+  <number_of_voices_>2</number_of_voices_>
+  <breathing_time_>4.0</breathing_time_>
+  <sustain_>60</sustain_>
+  <midi_out_velocity_>80</midi_out_velocity_>
+  <low_limit_>48</low_limit_>
+  <high_limit_>72</high_limit_>
+  <start_position_>60</start_position_>
+  <direction_>linear</direction_>
+  <mode_>two_voices_pure_random</mode_>
+  <interval_priorities_>
+    <interval_priorities_index_0>2</interval_priorities_index_0>
+    <interval_priorities_index_1>2</interval_priorities_index_1>
+    <interval_priorities_index_2>2</interval_priorities_index_2>
+    <interval_priorities_index_3>2</interval_priorities_index_3>
+    <interval_priorities_index_4>2</interval_priorities_index_4>
+    <interval_priorities_index_5>2</interval_priorities_index_5>
+    <interval_priorities_index_6>2</interval_priorities_index_6>
+    <interval_priorities_index_7>0</interval_priorities_index_7>
+    <interval_priorities_index_8>0</interval_priorities_index_8>
+    <interval_priorities_index_9>0</interval_priorities_index_9>
+    <interval_priorities_index_10>0</interval_priorities_index_10>
+  </interval_priorities_>
+  <learned_sequences_></learned_sequences_>
+  <learned_prob_>0.8</learned_prob_>
+  <memory_size_>5</memory_size_>
+  <learn_new_sequences_>true</learn_new_sequences_>
+  <transpositions_prob_>0.0</transpositions_prob_>
+</replay_parameters_>
+<midi_parameters_>
+  <midi_in_device_>Real Time Sequencer</midi_in_device_>
+  <midi_out_device_>Gervill</midi_out_device_>
+  <reference_a_hz_>441.5</reference_a_hz_>
+</midi_parameters_>
+<file_paths_>
+  <default_settings_file_path_>default_settings.xml</default_settings_file_path_>
+  <current_settings_file_path_>settings_two_voices.xml</current_settings_file_path_>
+  <learned_sequences_prefix_>learned_sequences_</learned_sequences_prefix_>
+</file_paths_>

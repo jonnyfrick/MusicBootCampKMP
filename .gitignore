@@ -18,6 +18,7 @@ captures
 **/xcshareddata/WorkspaceSettings.xcsettings
 node_modules/
 
-# Personal practice data (learned sequences) copied from the Java app for the golden master tests
-**/learned_sequences_*
-**/canonical_learned_sequences_*
+# Personal practice data (learned sequences) copied from the Java app for the golden master tests.
+# The synthetic data set in golden/synthetic/ is shareable and stays in git.
+/core/src/jvmTest/resources/golden/learned_sequences_*
+/core/src/jvmTest/resources/golden/canonical_learned_sequences_*

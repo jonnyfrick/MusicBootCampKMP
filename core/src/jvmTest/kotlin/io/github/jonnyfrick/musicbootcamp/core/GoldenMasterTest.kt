@@ -23,12 +23,30 @@ import kotlin.test.assertEquals
  */
 class GoldenMasterTest {
 
+    private companion object {
+        const val SYNTHETIC = "synthetic/"
+        val SYNTHETIC_LEARNED_FILES = listOf("learned_sequences_settings_mono.xml", "learned_sequences_settings_two_voices.xml")
+    }
+
+    // Fixtures come in two sets:
+    //  - golden/synthetic/: a small generated data set that is in git, so these tests always run;
+    //  - golden/: your own settings (in git) and learned sequences (not in git, tests skipped without them).
+
     @Test
     fun learnedSequenceFilesImportExactlyLikeJava() {
+        checkLearnedImport(SYNTHETIC, SYNTHETIC_LEARNED_FILES)
+    }
+
+    @Test
+    fun personalLearnedSequenceFilesImportExactlyLikeJava() {
         assumeTrue(Golden.LEARNED_DATA_HINT, Golden.learnedDataAvailable())
-        for (file in Golden.learnedFiles) {
-            val memory = LegacyImport.parseLearnedSequences(Golden.text(file))
-            val expected = Golden.textOrNull("canonical_" + file.removeSuffix(".xml") + ".txt")
+        checkLearnedImport("", Golden.learnedFiles)
+    }
+
+    private fun checkLearnedImport(dir: String, files: List<String>) {
+        for (file in files) {
+            val memory = LegacyImport.parseLearnedSequences(Golden.text(dir + file))
+            val expected = Golden.textOrNull(dir + "canonical_" + file.removeSuffix(".xml") + ".txt")
             assumeTrue("canonical dump of $file missing — regenerate the fixtures", expected != null)
             expected!!
             Golden.assertSameLines(expected, memory.canonicalText(), file)
@@ -38,10 +56,16 @@ class GoldenMasterTest {
 
     @Test
     fun settingsFilesImportExactlyLikeJava() {
-        for (entry in Golden.json("settings.json").jsonArray.map { it.jsonObject }) {
+        checkSettingsImport(SYNTHETIC, checkLearned = true)
+        // Your settings files are in git; their learned sequences only where present locally.
+        checkSettingsImport("", checkLearned = Golden.learnedDataAvailable())
+    }
+
+    private fun checkSettingsImport(dir: String, checkLearned: Boolean) {
+        for (entry in Golden.json(dir + "settings.json").jsonArray.map { it.jsonObject }) {
             val file = entry.string("settingsFile")
             val parameters = entry.getValue("replayParameters").jsonObject
-            val result = LegacyImport.importSetup("imported", Golden.text(file), Golden::textOrNull)
+            val result = LegacyImport.importSetup("imported", Golden.text(dir + file)) { Golden.textOrNull(dir + it) }
 
             assertEquals(Golden.practiceSettings(parameters), result.setup.settings, file)
             assertEquals(parameters.int("numberOfVoices"), result.setup.settings.mode.voices, "$file voices")
@@ -52,8 +76,7 @@ class GoldenMasterTest {
             assertEquals(entry.string("midiInDevice"), result.legacySettings.midiInputDevice, file)
             assertEquals(entry.string("midiOutDevice"), result.legacySettings.midiOutputDevice, file)
 
-            // The learned sequences themselves are only checked where the (untracked) files exist.
-            if (Golden.learnedDataAvailable()) {
+            if (checkLearned) {
                 val memory = result.setup.memory()
                 assertEquals(entry.int("learnedCount"), memory.size, "$file learned count")
                 assertEquals(entry.string("learnedSha256"), Golden.sha256(memory.canonicalText()), "$file learned content")
@@ -65,23 +88,31 @@ class GoldenMasterTest {
     @Test
     fun practiceScenariosReproduceJavaStepByStep() {
         for (file in listOf("scenario_mono_fresh.json", "scenario_two_voices_no_learning.json", "scenario_two_voices_fresh_learning.json")) {
-            runScenario(file)
+            runScenario("", file)
         }
     }
 
-    /** These start from your real learned sequences. */
+    /** Embedding, practising and downgrading learned sequences, with the synthetic memory. */
     @Test
     fun practiceScenariosWithLearnedSequencesReproduceJavaStepByStep() {
-        assumeTrue(Golden.LEARNED_DATA_HINT, Golden.learnedDataAvailable())
-        for (file in listOf("scenario_mono_lin_memory.json", "scenario_two_voices_memory.json")) runScenario(file)
+        for (file in listOf("scenario_mono_memory.json", "scenario_mono_memory_no_learning.json", "scenario_two_voices_memory.json")) {
+            runScenario(SYNTHETIC, file)
+        }
     }
 
-    private fun runScenario(file: String) {
-        val scenario = Golden.json(file).jsonObject
+    /** The same with your real learned sequences. */
+    @Test
+    fun practiceScenariosWithPersonalLearnedSequencesReproduceJavaStepByStep() {
+        assumeTrue(Golden.LEARNED_DATA_HINT, Golden.learnedDataAvailable())
+        for (file in listOf("scenario_mono_lin_memory.json", "scenario_two_voices_memory.json")) runScenario("", file)
+    }
+
+    private fun runScenario(dir: String, file: String) {
+        val scenario = Golden.json(dir + file).jsonObject
         val settings = Golden.practiceSettings(scenario.getValue("replayParameters").jsonObject)
 
         val initialFile = scenario.getValue("initialLearnedSequencesFile").takeIf { it != JsonNull }?.jsonPrimitive?.content
-        val memory = initialFile?.let { LegacyImport.parseLearnedSequences(Golden.text(it)) } ?: LearnedSequences()
+        val memory = initialFile?.let { LegacyImport.parseLearnedSequences(Golden.text(dir + it)) } ?: LearnedSequences()
         assertEquals(scenario.int("initialLearnedCount"), memory.size, "$file initial memory")
         assertEquals(scenario.string("initialLearnedSha256"), Golden.sha256(memory.canonicalText()), "$file initial memory")
 

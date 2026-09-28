@@ -83,6 +83,19 @@ class EchoCancellationTest {
     }
 
     @Test
+    fun aLoudspeakerTooQuietToMeasureDoesNotBlockThePlayer() {
+        // Found in real recordings: the app 20+ dB below the piano, its delay never measurable.
+        // Input must not stay blocked just because the app's sound cannot be learned.
+        val reference = appAudio(appNotes, seconds = 17.0)
+        val microphone = roomEcho(reference, delaySamples = 1_700, gain = 0.0)
+        val answers = (0 until appNotes.size - 1).map { step -> appNotes[step] to step + 0.6 }
+        answers.forEach { (note, time) -> addPianoStroke(microphone, note, startSeconds = time, durationSeconds = 0.3, seed = 7 * note) }
+
+        val detected = detect(microphone, reference)
+        assertEquals(answers.map { it.first }, detected.map { it.midiNote }, detected.map { it.midiNote to it.seconds() }.toString())
+    }
+
+    @Test
     fun lateAnswersOverTheNextNoteAreRecognised() {
         val reference = appAudio(appNotes, seconds = 17.0)
         val microphone = roomEcho(reference, delaySamples = 1_700, gain = 0.5)

@@ -183,13 +183,19 @@ messages, so the exercise logic is the same as with a MIDI keyboard.
   its own `SourceDataLine`, so it knows the samples the loudspeaker plays. The microphone port
   pairs each block with the same number of played samples on its reading thread
   (`AudioInputPort.blocksWith`). `core/pitch/EchoEstimator` predicts the app's sound in the
-  microphone from them, on power spectra: the delay by correlating onsets, a gain per 1/6 octave
+  microphone from them, on power spectra: the delay by votes (after each onset of the reference,
+  the lag of the steepest rise in the microphone; the player's much louder strokes made a
+  correlation of whole envelopes fail in real recordings), a gain per 1/6 octave
   as the median ratio microphone/reference (learned only while the player is not playing),
   reverberation as a slowest decay, times 2 as a margin. `NoteTracker` then detects strokes on
   what exceeds the prediction (and requires the total level to rise, and near the app's own
   onsets to stand out against its sound), and `PitchDetector` removes the predicted spectrum.
-  Until the prediction is ready (a few notes into an exercise), nothing is detected while the
-  app plays. So every note counts, including the one the app is playing. With other outputs
+  Until the prediction is ready (a few notes into an exercise; in a room where the app is too
+  quiet in the microphone to measure, never), a stroke must be `fallbackMargin` (2×) louder than
+  the loud end of what the microphone hears while the app plays (4× right after the app starts a
+  note); this is learned without the delay. (At first input was simply blocked then, which in
+  real recordings — app 20 dB below the piano, delay never found — blocked every other run
+  completely.) So every note counts, including the one the app is playing. With other outputs
   `OwnSoundGate` below is used. Tests: `EchoCancellationTest` (synthetic room with reflections,
   reverberation and noise). The NSDF is now capped at 1: after removing a background, long lags
   could exceed it and push the true first peak below the threshold (sub-octave errors); without a

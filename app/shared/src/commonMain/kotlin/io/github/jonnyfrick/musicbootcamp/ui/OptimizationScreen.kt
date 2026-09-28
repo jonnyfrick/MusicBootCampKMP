@@ -52,6 +52,9 @@ private val parameterSliders = listOf(
         { it.rawRise }, { p, v -> p.copy(rawRise = v) }),
     ParameterSlider("Own-sound share", "Where the app's note starts, a stroke must exceed this share of it.", 0.0..1.5, 0.05,
         { it.ownSoundShare }, { p, v -> p.copy(ownSoundShare = v) }),
+    ParameterSlider("Fallback margin", "Until the own sound is learned (or if it is too quiet to learn), strokes must be " +
+        "this many times louder than the microphone while the app plays.", 1.0..6.0, 0.25,
+        { it.fallbackMargin }, { p, v -> p.copy(fallbackMargin = v) }),
 )
 
 /** Preferences → Microphone: runs of a fixed length, always recorded, with the detection parameters editable. */

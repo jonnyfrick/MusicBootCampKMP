@@ -29,6 +29,11 @@ data class DetectionParameters(
     val rawRise: Double = 1.5,
     /** Where the app's note starts, a stroke must exceed this share of its predicted level. */
     val ownSoundShare: Double = 0.5,
+    /**
+     * Before the app's sound can be removed (or where it is too quiet to measure), a stroke must be
+     * this many times louder than the microphone usually is while the app plays.
+     */
+    val fallbackMargin: Double = 2.0,
 )
 
 /** As stored in recordings (`info["detectionParameters"]`). */

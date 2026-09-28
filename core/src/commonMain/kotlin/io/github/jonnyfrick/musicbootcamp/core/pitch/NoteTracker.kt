@@ -30,6 +30,8 @@ class HopTrace(
     val strokeLevel: Double,
     /** Predicted RMS of the app's own sound (with the safety factor); 0 without a reference. */
     val ownSoundLevel: Double,
+    /** The microphone's usual RMS while the app plays (for the fallback before [ownSoundRemoved]). */
+    val levelWhileReference: Double,
     val delayHops: Int?,
     val ownSoundRemoved: Boolean,
     /** Input ignored because the app plays and its sound cannot be removed yet. */
@@ -57,8 +59,9 @@ class AudioBlock(val microphone: FloatArray, val reference: FloatArray? = null)
  *
  * Given a reference (what the app played through the loudspeaker), the app's own sound is
  * predicted ([EchoEstimator]) and left out: onsets are measured on what exceeds it, and pitch
- * analysis removes its spectrum. Until that prediction is ready, nothing is detected while
- * the app plays.
+ * analysis removes its spectrum. Until that prediction is ready (in a room where the app is
+ * hardly audible it may never be), a stroke must be [DetectionParameters.fallbackMargin]
+ * times louder than the microphone usually is while the app plays.
  */
 class NoteTracker(
     val sampleRate: Int,
@@ -141,7 +144,8 @@ class NoteTracker(
             val echo = echo
             report(
                 HopTrace(
-                    samplesSeen, level, tracedStroke, echo?.let { sqrt(it.hopEchoEnergy) } ?: 0.0, echo?.delayHops,
+                    samplesSeen, level, tracedStroke, echo?.let { sqrt(it.hopEchoEnergy) } ?: 0.0,
+                    echo?.levelWhileReference ?: 0.0, echo?.delayHops,
                     echo?.ready == true, tracedBlocked, echo?.referenceOnsetNear == true, tracedOnset,
                     traced?.frequencyHz, traced?.clarity, echo?.echoPower,
                 ),
@@ -157,9 +161,13 @@ class NoteTracker(
 
         val echo = echo?.apply { update(hopBuffer, referenceHop, playerActive = hopsSinceStroke < PLAYER_ACTIVE_HOPS) }
         hopsSinceStroke++
-        // Without a ready prediction of the app's sound, it would be taken for the player's.
-        val blocked = echo != null && !echo.ready && echo.referenceActive
-        if (blocked) hopsSinceOnset = -1
+        // Without a ready prediction of the app's sound, only strokes well above it count.
+        // Blocking only prevents new strokes; one already being analysed goes on.
+        // Right after the app starts a note its attack may be louder still, so the margin doubles there.
+        val blocked = echo != null && !echo.ready && echo.referenceActive && (
+            !echo.levelKnown ||
+                level < parameters.fallbackMargin * echo.levelWhileReference * (if (echo.referenceOnsetRecent) 2 else 1)
+            )
         val ownSoundRemoved = echo != null && echo.ready
         val strokeLevel = if (ownSoundRemoved) echo!!.residualLevel(sum / hop) else level
 
@@ -171,7 +179,7 @@ class NoteTracker(
         // stroke also raises the total level above the last hops.
         val louder = !ownSoundRemoved || level > parameters.rawRise * (recentRawLevels.minOrNull() ?: 0.0)
         val onset = !blocked && louder && strokeLevel >= noiseGate && strokeLevel > onsetRatio * previous &&
-            (hopsSinceOnset < 0 || hopsSinceOnset >= REFRACTORY_HOPS)
+            hopsSinceStroke >= REFRACTORY_HOPS
         tracedStroke = strokeLevel
         tracedBlocked = blocked
         tracedOnset = onset

@@ -241,13 +241,13 @@ private class Analysis(private val wavFile: File, output: File? = null) {
 
     private fun writeCsv(traces: List<HopTrace>) {
         File(output, "hops.csv").printWriter().use { out ->
-            out.println("time_s,level,stroke_level,own_sound_level,delay_hops,own_sound_removed,blocked,reference_onset_near,onset,frequency_hz,note,clarity")
+            out.println("time_s,level,stroke_level,own_sound_level,level_while_reference,delay_hops,own_sound_removed,blocked,reference_onset_near,onset,frequency_hz,note,clarity")
             for (t in traces) {
                 val note = t.frequencyHz?.let { 69 + 12 * ln(it / referenceA) / ln(2.0) }
                 out.println(
                     String.format(
-                        Locale.ROOT, "%.4f,%.5f,%.5f,%.5f,%s,%b,%b,%b,%b,%s,%s,%s",
-                        t.sampleTime.toDouble() / sampleRate, t.level, t.strokeLevel, t.ownSoundLevel, t.delayHops ?: "",
+                        Locale.ROOT, "%.4f,%.5f,%.5f,%.5f,%.5f,%s,%b,%b,%b,%b,%s,%s,%s",
+                        t.sampleTime.toDouble() / sampleRate, t.level, t.strokeLevel, t.ownSoundLevel, t.levelWhileReference, t.delayHops ?: "",
                         t.ownSoundRemoved, t.blocked, t.referenceOnsetNear, t.onset,
                         t.frequencyHz?.let { "%.1f".format(Locale.ROOT, it) } ?: "",
                         note?.let { "%.2f".format(Locale.ROOT, it) } ?: "", t.clarity?.let { "%.3f".format(Locale.ROOT, it) } ?: "",

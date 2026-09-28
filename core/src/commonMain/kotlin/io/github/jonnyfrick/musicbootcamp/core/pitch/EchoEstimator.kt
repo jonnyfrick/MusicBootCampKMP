@@ -1,5 +1,6 @@
 package io.github.jonnyfrick.musicbootcamp.core.pitch
 
+import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.ln
 import kotlin.math.log2
@@ -13,8 +14,8 @@ import kotlin.math.sqrt
  *
  * Works on power spectra, not on waveforms: phase, small timing errors and loudspeaker
  * distortion hardly matter, and pitch detection only needs the power spectrum anyway.
- * - Delay: the onsets in the reference and in the microphone are correlated over the last
- *   seconds; the best lag within [MAX_DELAY_HOPS] wins. Tolerates ±1 hop.
+ * - Delay: after each onset of the reference, the lag of the steepest rise in the microphone
+ *   is a vote; the lag most recent votes agree on wins (see [voteForDelay]). Tolerates ±1 hop.
  * - Gain per frequency band (loudspeaker, room, microphone): the median of the ratio
  *   microphone / reference, learned only while the player is not playing. A stroke shows as a
  *   level jump in the microphone without one in the reference; learning pauses after it, so a
@@ -22,8 +23,9 @@ import kotlin.math.sqrt
  * - Room reverberation: the prediction decays by [reverbDecay] per hop at the slowest.
  *
  * The prediction is scaled by [overSubtraction] as a safety margin. Until the delay is known
- * and the gains have settled ([ready]), callers should ignore input while the reference is
- * active ([referenceActive]), like without echo cancellation.
+ * and the gains have settled ([ready]) — in a room where the app is hardly audible that may
+ * never happen — callers should only accept strokes well above [levelWhileReference], the
+ * microphone's usual level while the app plays.
  */
 internal class EchoEstimator(
     sampleRate: Int,
@@ -41,8 +43,8 @@ internal class EchoEstimator(
     private val microphone = FloatArray(windowSize)
 
     private val historySize = HISTORY_SECONDS * sampleRate / hop
-    private val micEnvelope = DoubleArray(historySize)
-    private val refEnvelope = DoubleArray(historySize)
+    private val micEnvelope = DoubleArray(historySize) { ln(ENVELOPE_FLOOR) } // silence before the start
+    private val refEnvelope = DoubleArray(historySize) { ln(ENVELOPE_FLOOR) }
     private var hops = 0L
     private var hopsSinceReference = Int.MAX_VALUE / 2
     private var hopsSincePlayerStroke = Int.MAX_VALUE / 2
@@ -50,7 +52,7 @@ internal class EchoEstimator(
     /** Delay of the microphone behind the reference, in hops; null until it was found. */
     var delayHops: Int? = null
         private set
-    private var delayCandidate = -1
+    private val delayVotes = ArrayDeque<Int>()
 
     private val logGain = DoubleArray(bandCount)
     private val gainUpdates = IntArray(bandCount)
@@ -68,6 +70,26 @@ internal class EchoEstimator(
 
     /** Whether an onset of the app's sound reaches the microphone about now (where predictions are least exact). */
     var referenceOnsetNear = false
+        private set
+
+    private var logLevelWhileReference = ln(ENVELOPE_FLOOR)
+    private var levelUpdates = 0
+    private var hopsSinceMicJump = Int.MAX_VALUE / 2
+
+    /**
+     * The microphone's RMS while the app plays audibly and the player (as far as visible) does not,
+     * at its loud end ([LEVEL_QUANTILE]): the app's sound in the room. Needs no delay or gain estimate.
+     */
+    val levelWhileReference: Double get() = sqrt(exp(logLevelWhileReference))
+
+    /** Whether [levelWhileReference] has seen enough of the app's sound, beyond the longest delay before it is heard. */
+    val levelKnown: Boolean get() = levelUpdates >= MAX_DELAY_HOPS + MIN_LEVEL_UPDATES
+
+    /**
+     * Whether the app's sound started a note within the longest delay: its attack may be reaching
+     * the microphone now (without knowing the delay, see [referenceOnsetNear]).
+     */
+    var referenceOnsetRecent = false
         private set
 
     /** Whether the app played something recently enough to be heard now. */
@@ -97,7 +119,22 @@ internal class EchoEstimator(
         micEnvelope[slot] = ln(micEnergy + ENVELOPE_FLOOR)
         refEnvelope[slot] = ln(refEnergy + ENVELOPE_FLOOR)
         hops++
-        if (hops >= historySize / 4 && hops % DELAY_UPDATE_HOPS == 0L) estimateDelay()
+        voteForDelay()
+        // A jump in the microphone that no recent onset of the reference explains is the player.
+        val explained = (0..MAX_DELAY_HOPS).any { jump(refEnvelope, it) > ln(REFERENCE_JUMP) }
+        referenceOnsetRecent = explained
+        if (jump(micEnvelope, 0) > ln(STROKE_JUMP) && !explained) hopsSinceMicJump = 0 else hopsSinceMicJump++
+        val audible = (0..MAX_DELAY_HOPS).any { it < hops && refEnvelope[slot(hops - 1 - it)] > ln(LOUD_REFERENCE) }
+        if (audible && hopsSinceMicJump >= PLAYER_PAUSE_HOPS) {
+            val x = ln(micEnergy + ENVELOPE_FLOOR)
+            // While learning, the loudest so far (safe side); then the loud end, slowly.
+            logLevelWhileReference = when {
+                levelUpdates == 0 -> x
+                !levelKnown -> max(logLevelWhileReference, x)
+                else -> logLevelWhileReference + quantileStep(x, logLevelWhileReference, FAST_UPDATES, LEVEL_QUANTILE, rejectOutliers = false)
+            }
+            levelUpdates++
+        }
 
         val delay = delayHops
         if (delay == null) {
@@ -114,11 +151,14 @@ internal class EchoEstimator(
 
     /** How much the (log) energy [age] hops ago rose above the lowest of the three hops before. */
     private fun jump(envelope: DoubleArray, age: Int): Double {
-        if (hops - age < 4 || age >= historySize - 4) return 0.0
-        val now = envelope[((hops - 1 - age) % historySize).toInt()]
-        val before = (1..3).minOf { envelope[((hops - 1 - age - it) % historySize).toInt()] }
+        if (age >= hops || age >= historySize - 4) return 0.0
+        val now = envelope[slot(hops - 1 - age)]
+        val before = (1..3).minOf { envelope[slot(hops - 1 - age - it)] }
         return now - before
     }
+
+    /** Ring buffer index of hop [t]; before the start it holds silence. */
+    private fun slot(t: Long): Int = (((t % historySize) + historySize) % historySize).toInt()
 
     /** A level jump in the microphone that no jump in the (delayed) reference explains. */
     private fun playerStroke(delay: Int): Boolean {
@@ -161,10 +201,16 @@ internal class EchoEstimator(
     }
 
     /** Stochastic quantile tracking; faster while there are few observations. */
-    private fun quantileStep(x: Double, current: Double, updates: Int): Double {
-        if (updates >= FAST_UPDATES && x > current + ln(OUTLIER)) return 0.0
+    private fun quantileStep(
+        x: Double,
+        current: Double,
+        updates: Int,
+        quantile: Double = QUANTILE,
+        rejectOutliers: Boolean = true,
+    ): Double {
+        if (rejectOutliers && updates >= FAST_UPDATES && x > current + ln(OUTLIER)) return 0.0
         val rate = if (updates < FAST_UPDATES) FAST_RATE else RATE
-        return rate * (QUANTILE - if (x < current) 1.0 else 0.0)
+        return rate * (quantile - if (x < current) 1.0 else 0.0)
     }
 
     private fun predictWindow(delay: Int) {
@@ -194,34 +240,27 @@ internal class EchoEstimator(
         hopEchoEnergy = max(predicted, reverbDecay * hopEchoEnergy)
     }
 
-    private fun estimateDelay() {
-        val length = min(hops, historySize.toLong()).toInt()
-        val first = hops - length
-        fun onset(envelope: DoubleArray, t: Long): Double =
-            if (t <= first) 0.0 else (envelope[(t % historySize).toInt()] - envelope[((t - 1) % historySize).toInt()]).coerceAtLeast(0.0)
+    /**
+     * Once an onset of the reference is [MAX_DELAY_HOPS] old, votes for the lag at which the
+     * microphone level rose most after it. The player's strokes are much louder than the app's
+     * sound in the microphone, so correlating whole envelopes lets them dominate; per onset,
+     * a stroke can at most cast one stray vote.
+     */
+    private fun voteForDelay() {
+        val age = MAX_DELAY_HOPS + 1
+        if (jump(refEnvelope, age) < ln(REFERENCE_ONSET)) return
+        if (refEnvelope[((hops - 1 - age) % historySize).toInt()] < ln(AUDIBLE_REFERENCE)) return
+        val best = (0..MAX_DELAY_HOPS).maxBy { lag -> jump(micEnvelope, age - lag) }
+        if (jump(micEnvelope, age - best) < ln(MICROPHONE_ONSET)) return // not heard (e.g. under a loud stroke)
 
-        val micOnsets = DoubleArray(length) { onset(micEnvelope, first + it) }
-        val refOnsets = DoubleArray(length) { onset(refEnvelope, first + it) }
-        val refStrength = refOnsets.sum()
-        if (refStrength < MIN_ONSET_STRENGTH) return
-        val norm = sqrt(micOnsets.sumOf { it * it } * refOnsets.sumOf { it * it })
-        if (norm <= 0.0) return
-
-        val scores = DoubleArray(MAX_DELAY_HOPS + 1) { lag ->
-            var sum = 0.0
-            for (t in lag until length) sum += micOnsets[t] * refOnsets[t - lag]
-            sum / norm
-        }
-        val best = scores.indices.maxBy { scores[it] }
-        val rival = scores.indices.filter { it !in best - 1..best + 1 }.maxOfOrNull { scores[it] } ?: 0.0
-        if (scores[best] < MIN_CORRELATION || scores[best] < DISTINCT * rival) return
-
+        delayVotes.addLast(best)
+        if (delayVotes.size > DELAY_VOTES) delayVotes.removeFirst()
+        // The lag most votes agree with (±1 hop); it must hold at least two and half of them.
+        val (winner, support) = (0..MAX_DELAY_HOPS).map { lag -> lag to delayVotes.count { abs(it - lag) <= 1 } }
+            .maxWith(compareBy<Pair<Int, Int>> { it.second }.thenBy { lag -> delayVotes.count { it == lag.first } })
+        if (support < 2 || 2 * support < delayVotes.size) return
         val current = delayHops
-        when {
-            current == null || best == current -> delayHops = best
-            best == delayCandidate -> delayHops = best // confirmed twice
-            else -> delayCandidate = best
-        }
+        if (current == null || abs(winner - current) > 1 && support >= 3) delayHops = winner
     }
 
     private fun windowStart(lagHops: Int) = reference.size - windowSize - lagHops * hop
@@ -260,10 +299,13 @@ internal class EchoEstimator(
     private companion object {
         const val MAX_DELAY_HOPS = 30 // ~350 ms at 44.1 kHz
         const val HISTORY_SECONDS = 8
-        const val DELAY_UPDATE_HOPS = 43
-        const val MIN_ONSET_STRENGTH = 5.0
-        const val MIN_CORRELATION = 0.2
-        const val DISTINCT = 1.3
+        const val MIN_LEVEL_UPDATES = 10
+        const val LEVEL_QUANTILE = 0.9
+        const val LOUD_REFERENCE = 1e-5 // -50 dB
+        const val DELAY_VOTES = 9
+        const val REFERENCE_ONSET = 4.0 // energy ratio
+        const val MICROPHONE_ONSET = 2.0
+        const val AUDIBLE_REFERENCE = 1e-6 // -60 dB
         const val RELEASE_HOPS = 20
 
         const val BANDS_PER_OCTAVE = 6
@@ -281,7 +323,7 @@ internal class EchoEstimator(
         const val STROKE_JUMP = 3.0 // energy ratio
         const val REFERENCE_JUMP = 2.0
         const val PLAYER_PAUSE_HOPS = 43 // ~0.5 s
-        const val ONSET_SPREAD_HOPS = 4
+        const val ONSET_SPREAD_HOPS = 3
 
         const val SILENCE = 1e-7
         const val ENVELOPE_FLOOR = 1e-8

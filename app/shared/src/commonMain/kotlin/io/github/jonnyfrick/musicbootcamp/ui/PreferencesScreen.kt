@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import io.github.jonnyfrick.musicbootcamp.core.midi.NoteNames
 import io.github.jonnyfrick.musicbootcamp.core.midi.Tuning
 import io.github.jonnyfrick.musicbootcamp.core.persistence.InputSource
+import io.github.jonnyfrick.musicbootcamp.core.persistence.MAX_LATE_ANSWER_TOLERANCE_MILLIS
 import kotlin.math.roundToInt
 
 /** Java: MusicBootCamp → Preferences (`PreferencesDialog`). */
@@ -112,8 +113,25 @@ private fun MicrophoneSettings(controller: AppController) {
         if (preferences.usesHeadphones) {
             "Notes you play are recognised at any time."
         } else {
-            "Without headphones the microphone hears the app too, so your notes only count once the given note has ended."
+            "Without headphones the microphone hears the app too, so while it plays a note, that note and its " +
+                "octaves are ignored; other notes count."
         },
+    )
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Late answers", Modifier.width(140.dp))
+        Slider(
+            value = preferences.lateAnswerToleranceMillis.toFloat(),
+            onValueChange = { controller.setLateAnswerTolerance((it / 50).roundToInt() * 50) },
+            valueRange = 0f..MAX_LATE_ANSWER_TOLERANCE_MILLIS.toFloat(),
+            steps = MAX_LATE_ANSWER_TOLERANCE_MILLIS / 50 - 1,
+            enabled = !running,
+            modifier = Modifier.weight(1f),
+        )
+        Text("${preferences.lateAnswerToleranceMillis} ms", Modifier.width(90.dp))
+    }
+    Hint(
+        "A note you strike up to this long after the next note has started still answers the previous one, " +
+            "if that had no answer yet.",
     )
     Spacer(Modifier.height(8.dp))
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {

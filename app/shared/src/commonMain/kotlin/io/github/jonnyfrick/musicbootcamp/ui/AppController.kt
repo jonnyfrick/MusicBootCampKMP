@@ -15,7 +15,9 @@ import io.github.jonnyfrick.musicbootcamp.core.practice.PracticeStatus
 import io.github.jonnyfrick.musicbootcamp.core.midi.MidiMessage
 import io.github.jonnyfrick.musicbootcamp.core.model.PracticeMode
 import io.github.jonnyfrick.musicbootcamp.core.persistence.InputSource
+import io.github.jonnyfrick.musicbootcamp.core.persistence.MAX_LATE_ANSWER_TOLERANCE_MILLIS
 import io.github.jonnyfrick.musicbootcamp.core.pitch.DetectedNote
+import io.github.jonnyfrick.musicbootcamp.core.pitch.NoteTracker
 import io.github.jonnyfrick.musicbootcamp.core.pitch.detectNotes
 import io.github.jonnyfrick.musicbootcamp.core.practice.OwnSoundGate
 import io.github.jonnyfrick.musicbootcamp.platform.AudioInputPort
@@ -32,6 +34,8 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * UI state and actions of the app (Java: `MusicBootCampMainWindow`, `ParameterManager`
@@ -98,6 +102,7 @@ class AppController(
     private var runner: PracticeRunner? = null
     private var output: MidiOutputPort? = null
     private var gate: OwnSoundGate? = null
+    private var lateAnswerTolerance = Duration.ZERO
     private val closers = mutableListOf<() -> Unit>()
     private var micTestPort: AudioInputPort? = null
     private var micTestJob: Job? = null
@@ -266,7 +271,10 @@ class AppController(
         }
         val practiceOutput = gate ?: output!!
 
-        val practice = PracticeRunner(scope, settings, setup.memory(), practiceOutput, input)
+        val practice = PracticeRunner(
+            scope, settings, setup.memory(), practiceOutput, input,
+            lateAnswerTolerance = if (microphone) lateAnswerTolerance else Duration.ZERO,
+        )
         runner = practice
         running = true
         statusJob = scope.launch { practice.status.collect { status = it } }
@@ -316,11 +324,14 @@ class AppController(
         closers += audio::close
         val ownSound = if (preferences.usesHeadphones) null else OwnSoundGate(midiOutput)
         gate = ownSound
+        // The tolerance counts from the key stroke; the note arrives only once it is recognised.
+        lateAnswerTolerance = preferences.lateAnswerToleranceMillis.milliseconds +
+            NoteTracker(audio.sampleRate).detectionDelay
         return audio.blocks
             .detectNotes(audio.sampleRate, preferences.referenceAHz, onLevel = { microphoneLevel = it })
             .flowOn(Dispatchers.Default)
             // Evaluated where the exercise runs, which is also where the gate sees the notes played.
-            .filter { ownSound?.isQuiet() ?: true }
+            .filter { ownSound?.accepts(it) ?: true }
     }
 
     private fun openOutput(): MidiOutputPort {
@@ -467,6 +478,8 @@ class AppController(
 
     fun setInputSource(source: InputSource) = updatePreferences { it.copy(inputSource = source) }
     fun setUsesHeadphones(uses: Boolean) = updatePreferences { it.copy(usesHeadphones = uses) }
+    fun setLateAnswerTolerance(millis: Int) =
+        updatePreferences { it.copy(lateAnswerToleranceMillis = millis.coerceIn(0, MAX_LATE_ANSWER_TOLERANCE_MILLIS)) }
 
     fun selectAudioInputDevice(name: String?) {
         val wasTesting = micTesting

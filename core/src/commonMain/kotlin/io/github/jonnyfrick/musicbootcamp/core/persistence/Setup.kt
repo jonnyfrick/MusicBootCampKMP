@@ -75,7 +75,15 @@ data class AppPreferences(
     val audioInputDevice: String? = null,
     /** With headphones the microphone cannot hear the app, so input is accepted at any time. */
     val usesHeadphones: Boolean = false,
+    /**
+     * Microphone input: how late after the next note starts a key stroke still counts as the
+     * answer to the previous step, in milliseconds.
+     */
+    val lateAnswerToleranceMillis: Int = DEFAULT_LATE_ANSWER_TOLERANCE_MILLIS,
 )
+
+const val DEFAULT_LATE_ANSWER_TOLERANCE_MILLIS = 150
+const val MAX_LATE_ANSWER_TOLERANCE_MILLIS = 300
 
 @Serializable
 enum class InputSource {

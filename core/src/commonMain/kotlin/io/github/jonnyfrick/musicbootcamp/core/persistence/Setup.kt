@@ -5,6 +5,7 @@ import io.github.jonnyfrick.musicbootcamp.core.midi.Tuning
 import io.github.jonnyfrick.musicbootcamp.core.model.LearnedSequence
 import io.github.jonnyfrick.musicbootcamp.core.model.PracticeMode
 import io.github.jonnyfrick.musicbootcamp.core.model.PracticeSettings
+import io.github.jonnyfrick.musicbootcamp.core.pitch.DetectionParameters
 import kotlinx.serialization.Serializable
 
 /**
@@ -82,10 +83,28 @@ data class AppPreferences(
     val lateAnswerToleranceMillis: Int = DEFAULT_LATE_ANSWER_TOLERANCE_MILLIS,
     /** Microphone input: record each exercise (audio and event log) to tune the pitch detection. */
     val recordMicrophone: Boolean = false,
+    /**
+     * Microphone input: runs of [optimizationSteps] notes, always recorded, with the detection
+     * parameters editable, to tune the recognition on real playing.
+     */
+    val optimizationMode: Boolean = false,
+    val optimizationSteps: Int = DEFAULT_OPTIMIZATION_STEPS,
+    val detectionParameters: DetectionParameters = DetectionParameters(),
+    /**
+     * Which defaults [detectionParameters] were tuned against; older ones are reset on loading, so
+     * a value a later version changed its mind about does not linger (see [SetupRepository.loadPreferences]).
+     */
+    val detectionParametersRevision: Int = 0,
 )
 
+/** Raise when the defaults of [DetectionParameters] change in a way stored values should follow. */
+const val DETECTION_PARAMETERS_REVISION = 1
+
+const val DEFAULT_OPTIMIZATION_STEPS = 12
+val OPTIMIZATION_STEP_RANGE = 5..50
+
 const val DEFAULT_LATE_ANSWER_TOLERANCE_MILLIS = 150
-const val MAX_LATE_ANSWER_TOLERANCE_MILLIS = 300
+const val MAX_LATE_ANSWER_TOLERANCE_MILLIS = 1000
 
 @Serializable
 enum class InputSource {

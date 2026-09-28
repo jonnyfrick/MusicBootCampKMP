@@ -22,9 +22,11 @@ data class StepResult(
     val startedNotes: List<Int>,
     /**
      * The step that just ended had no answer yet and waits for a late one; its [Evaluation] comes
-     * from [PracticeSession.onMidiInput] or [PracticeSession.finishEvaluation].
+     * from [PracticeSession.onMidiInput] or [PracticeSession.expire].
      */
     val evaluationPending: Boolean = false,
+    /** The number of that step, for [PracticeSession.expire]. */
+    val openStep: Int? = null,
 )
 
 /** The outcome of a step that was evaluated after the next step had begun. */
@@ -55,54 +57,95 @@ class PracticeSession(
     private val corrector = Corrector.forMode(settings.mode, settings.memorySize)
     private var steps = 0
 
-    /** The notes of the current step while the previous step still waits for a late answer. */
-    private var pendingGiven: List<Int>? = null
+    /**
+     * With a late-answer tolerance (microphone): the steps whose answer may still come, oldest
+     * first; the last one is the current step. The corrector only sees a step when it is evaluated.
+     */
+    private val open = ArrayDeque<OpenStep>()
+    private var deferring = false
+
+    /** Notes of the last steps given up unanswered: a key press for one of them came too late. */
+    private val missedLately = ArrayDeque<Int>()
+
+    private class OpenStep(val number: Int, val given: Int) {
+        var answer: Int? = null
+        /** Answered, or given up (its time is over, or a later step got the answer). */
+        var resolved = false
+    }
 
     /**
      * Java: `AddToCorrectorReceiver` — only real key presses count.
      *
-     * While the previous step waits for a late answer, key presses count for it; returns its
-     * [Evaluation] once it has its answer.
+     * With a tolerance, a key press answers the oldest open step — or, if it is exactly the note of
+     * a later open step, that one, and the older ones count as missed (so a skipped note or a
+     * false stroke does not shift all later answers). Returns the evaluations this completes.
      */
-    fun onMidiInput(message: MidiMessage): Evaluation? {
-        if (!message.isNoteOn) return null
-        corrector.addRecorded(message.data1)
-        return if (pendingGiven != null && corrector.hasAnswer()) finishEvaluation() else null
+    fun onMidiInput(message: MidiMessage): List<Evaluation> {
+        if (!message.isNoteOn) return emptyList()
+        if (!deferring) {
+            corrector.addRecorded(message.data1)
+            return emptyList()
+        }
+        val waiting = open.filter { !it.resolved }
+        if (waiting.isEmpty()) return emptyList() // only the first key press of a step counts
+        val note = message.data1
+        val matching = waiting.firstOrNull { it.given == note }
+        // Just too late for its own step: it must not take the answer of the next one.
+        if (matching == null && note in missedLately) {
+            missedLately.remove(note)
+            return emptyList()
+        }
+        val target = matching ?: waiting.first()
+        for (step in waiting) {
+            if (step === target) break
+            step.resolved = true // missed
+        }
+        target.answer = note
+        target.resolved = true
+        return evaluateResolved()
     }
 
-    /**
-     * Evaluates the previous step if it still waits for a late answer (the tolerance is over);
-     * null if nothing was pending.
-     */
-    fun finishEvaluation(): Evaluation? {
-        val given = pendingGiven ?: return null
-        pendingGiven = null
-        val evaluation = evaluate()
-        startGiven(given)
-        return evaluation
+    /** The tolerance of step [number] is over: it (and older open steps) counts as missed if unanswered. */
+    fun expire(number: Int): List<Evaluation> {
+        val current = open.lastOrNull()
+        open.filter { it.number <= number && it !== current }.forEach { it.resolved = true }
+        return evaluateResolved()
     }
+
+    /** Whether no step waits for an answer any more (so a run may end without waiting longer). */
+    fun allAnswered(): Boolean = if (deferring) open.all { it.resolved } else corrector.hasAnswer()
 
     /**
      * Ends the current step and gives the next note(s).
      *
-     * With [deferEvaluation], a step without an answer yet is not evaluated now: the next note
-     * starts on time, and key presses keep counting for the ended step until it has its answer or
-     * [finishEvaluation] is called. Evaluating late means a stored mistake can only influence
-     * the steps after the next one. Without it (the Java behaviour) the step is evaluated at once.
-     * A still pending evaluation is finished first; call [finishEvaluation] before to get it.
+     * With [deferEvaluation] (monophonic only), a step without an answer yet stays open: the next
+     * note starts on time, and key presses may still answer it (see [onMidiInput]) until [expire]
+     * is called with its number ([StepResult.openStep]). Evaluating late means a stored mistake can
+     * only influence the steps after the next one. A step answered in time is evaluated here, as
+     * without it (the Java behaviour), so the exercise and the random numbers are the same then.
      */
     fun step(deferEvaluation: Boolean = false): StepResult {
-        finishEvaluation()
         val voices = settings.mode.voices
         val sounding = engine.positions()
         sounding.forEach { output.send(MidiMessage.noteOff(it)) }
 
-        val defer = deferEvaluation && steps > 0 && !corrector.hasAnswer()
-        val evaluation = if (defer) null else evaluate()
+        val defer = deferEvaluation && voices == 1
+        var leftOpen: Int? = null
+        val evaluation = if (!defer) {
+            evaluate()
+        } else {
+            deferring = true
+            val current = open.lastOrNull()
+            when {
+                current == null -> null
+                current.resolved -> evaluateStep(open.removeLast()) // older ones are done by then
+                else -> null.also { leftOpen = current.number }
+            }
+        }
 
         engine.changeNotes(voices)
         val given = engine.positions()
-        if (defer) pendingGiven = given else startGiven(given)
+        if (defer) open.addLast(OpenStep(steps, given[0])) else startGiven(given)
 
         val started = if (voices == 1) listOf(given[0]) else given.distinct() // a unison is played once
         started.forEach { output.send(MidiMessage.noteOn(it, settings.midiOutVelocity)) }
@@ -112,10 +155,38 @@ class PracticeSession(
             storedMistake = evaluation?.storedMistake ?: false,
             given = given,
             startedNotes = started,
-            evaluationPending = defer,
+            evaluationPending = leftOpen != null,
+            openStep = leftOpen,
         )
         steps++
         return result
+    }
+
+    /**
+     * Evaluates the current step (and any still open) without giving a new one, to end a run of a
+     * fixed length; empty before the first step.
+     */
+    fun end(): List<Evaluation> {
+        if (steps == 0) return emptyList()
+        if (!deferring) return listOf(evaluate())
+        open.forEach { it.resolved = true }
+        return buildList { while (open.isNotEmpty()) add(evaluateStep(open.removeFirst())) }
+    }
+
+    /** Evaluates resolved steps from the oldest on, in order; the current step waits for [step]. */
+    private fun evaluateResolved(): List<Evaluation> = buildList {
+        while (open.size > 1 && open.first().resolved) add(evaluateStep(open.removeFirst()))
+    }
+
+    private fun evaluateStep(step: OpenStep): Evaluation {
+        if (step.answer == null) {
+            missedLately.addLast(step.given)
+            if (missedLately.size > MISSED_REMEMBERED) missedLately.removeFirst()
+        }
+        corrector.addGiven(step.given)
+        corrector.resetRecorded()
+        step.answer?.let { corrector.addRecorded(it) }
+        return evaluate()
     }
 
     private fun evaluate(): Evaluation {
@@ -141,5 +212,9 @@ class PracticeSession(
             corrector.resetGiven()
             given.forEach { corrector.addGiven(it) }
         }
+    }
+
+    private companion object {
+        const val MISSED_REMEMBERED = 2
     }
 }

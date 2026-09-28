@@ -47,6 +47,11 @@ MIDI devices can be plugged in and out while the app runs; the device lists upda
 Preferences has a MIDI test (shows the keys arriving from your keyboard, plays a test note on the
 MIDI output) and a microphone test (level meter and recognised note).
 
+Without headphones and with "Gervill" as MIDI Out, the app renders the synthesizer itself and removes
+its own sound from the microphone signal. That needs the JVM argument
+`--add-exports java.desktop/com.sun.media.sound=ALL-UNNAMED`, which `run` and the packaged app set;
+run from elsewhere without it, the app falls back to ignoring input that matches its own note.
+
 On macOS the first microphone test asks for microphone permission for the app that started Gradle
 (Android Studio or the terminal).
 
@@ -58,6 +63,13 @@ them:
 ```bash
 ./gradlew :core:jvmTest --tests '*RecordingReplayTest*' --rerun -Pmusicbootcamp.recordings=<folder or .wav>
 ```
+
+This writes a step table, a CSV of every analysis hop and a spectrogram PNG per recording to
+`core/build/analysis/<name>/`. Optional: `-Pmusicbootcamp.played=4=62,9=-` (what you played
+where it was not the given note, `-` = nothing), `-Pmusicbootcamp.parameters={"rawRise":1.3}`
+(replay with changed detection parameters) and `-Pmusicbootcamp.sweep=true` (rank a grid of
+parameters). "Optimization mode" in Preferences → Microphone makes such test runs easy: a fixed
+number of notes, always recorded, detection parameters editable, and a step-by-step list afterwards.
 
 ### Other targets
 

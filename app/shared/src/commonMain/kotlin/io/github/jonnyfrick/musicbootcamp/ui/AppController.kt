@@ -4,6 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import io.github.jonnyfrick.musicbootcamp.core.audio.SessionRecorder
+import io.github.jonnyfrick.musicbootcamp.core.audio.StepSummary
 import io.github.jonnyfrick.musicbootcamp.core.learning.LearnedSequences
 import io.github.jonnyfrick.musicbootcamp.core.legacy.LegacyImport
 import io.github.jonnyfrick.musicbootcamp.core.midi.Tuning
@@ -17,14 +18,21 @@ import io.github.jonnyfrick.musicbootcamp.core.midi.MidiMessage
 import io.github.jonnyfrick.musicbootcamp.core.model.PracticeMode
 import io.github.jonnyfrick.musicbootcamp.core.persistence.InputSource
 import io.github.jonnyfrick.musicbootcamp.core.persistence.MAX_LATE_ANSWER_TOLERANCE_MILLIS
+import io.github.jonnyfrick.musicbootcamp.core.persistence.OPTIMIZATION_STEP_RANGE
+import io.github.jonnyfrick.musicbootcamp.core.pitch.AudioBlock
 import io.github.jonnyfrick.musicbootcamp.core.pitch.DetectedNote
+import io.github.jonnyfrick.musicbootcamp.core.pitch.DetectionParameters
+import io.github.jonnyfrick.musicbootcamp.core.pitch.toJson
 import io.github.jonnyfrick.musicbootcamp.core.pitch.NoteTracker
 import io.github.jonnyfrick.musicbootcamp.core.pitch.detectNotes
+import io.github.jonnyfrick.musicbootcamp.core.pitch.detectedNotes
+import io.github.jonnyfrick.musicbootcamp.core.pitch.toNoteOn
 import io.github.jonnyfrick.musicbootcamp.core.practice.OwnSoundGate
 import io.github.jonnyfrick.musicbootcamp.platform.AudioInputPort
 import io.github.jonnyfrick.musicbootcamp.platform.MidiInputPort
 import io.github.jonnyfrick.musicbootcamp.platform.MidiOutputPort
 import io.github.jonnyfrick.musicbootcamp.platform.PlatformServices
+import io.github.jonnyfrick.musicbootcamp.platform.RenderedOutputPort
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -34,6 +42,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -108,6 +117,16 @@ class AppController(
     private var lateAnswerTolerance = Duration.ZERO
     private var recorder: SessionRecorder? = null
     private var recordingInfo: Map<String, String> = emptyMap()
+
+    /** Step by step what the last run in optimization mode recorded; shown on the Practice tab. */
+    var runSummary by mutableStateOf<RunSummary?>(null)
+        private set
+
+    /** Fixed run length in optimization mode (microphone only); null = until stopped. */
+    private val optimizationSteps: Int?
+        get() = preferences.optimizationSteps.takeIf {
+            preferences.optimizationMode && preferences.inputSource == InputSource.MICROPHONE
+        }
     private val closers = mutableListOf<() -> Unit>()
     private var micTestPort: AudioInputPort? = null
     private var micTestJob: Job? = null
@@ -282,17 +301,26 @@ class AppController(
             "usesHeadphones" to preferences.usesHeadphones.toString(),
             "referenceAHz" to preferences.referenceAHz.toString(),
             "midiOutputDevice" to (preferences.midiOutputDevice ?: ""),
+            "optimizationSteps" to (optimizationSteps?.toString() ?: ""),
+            "detectionParameters" to preferences.detectionParameters.toJson(),
         )
+        runSummary = null
 
         val practice = PracticeRunner(
             scope, settings, setup.memory(), practiceOutput, input,
             lateAnswerTolerance = if (microphone) lateAnswerTolerance else Duration.ZERO,
+            maxSteps = optimizationSteps,
             onStep = { recorder?.step(it) },
             onEvaluation = { recorder?.evaluation(it) },
         )
         runner = practice
         running = true
-        statusJob = scope.launch { practice.status.collect { status = it } }
+        statusJob = scope.launch {
+            practice.status.collect {
+                status = it
+                if (it.finished && runner === practice) stopPractice()
+            }
+        }
         practice.start()
     }
 
@@ -313,8 +341,8 @@ class AppController(
     }
 
     private suspend fun stopAndSave(practice: PracticeRunner) {
-        practice.stop()
         statusJob?.cancel()
+        practice.stop()
         status = practice.status.value
         finishRecording()
         closePorts()
@@ -335,30 +363,35 @@ class AppController(
 
     /** Opens the MIDI output (tuned) and the microphone; returns the recognised notes as note-ons. */
     private fun openMicrophoneInput(): Flow<MidiMessage> {
-        val midiOutput = openOutput()
         val audio = services.audio.open(preferences.audioInputDevice)
         closers += audio::close
+        // Without headphones the microphone hears the app. If the app renders its synthesizer
+        // itself, it knows what it played and removes that; until it can (and with other outputs),
+        // input matching the app's current note is ignored.
+        val parameters = preferences.detectionParameters
+        val rendered = if (preferences.usesHeadphones || !parameters.echoCancellation) null else openRenderedOutput(audio.sampleRate)
+        val midiOutput = rendered ?: openOutput()
         val ownSound = if (preferences.usesHeadphones) null else OwnSoundGate(midiOutput)
         gate = ownSound
         // The tolerance counts from the key stroke; the note arrives only once it is recognised.
         lateAnswerTolerance = preferences.lateAnswerToleranceMillis.milliseconds +
-            NoteTracker(audio.sampleRate).detectionDelay
-        val recording = if (preferences.recordMicrophone) {
-            services.recordings?.let { SessionRecorder(it.create(), audio.sampleRate, listOf("microphone")) }
+            NoteTracker(audio.sampleRate, parameters = parameters).detectionDelay
+        val recording = if (preferences.recordMicrophone || preferences.optimizationMode) {
+            val channels = if (rendered != null) listOf("microphone", "reference") else listOf("microphone")
+            services.recordings?.let { SessionRecorder(it.create(), audio.sampleRate, channels) }
         } else {
             null
         }
         recorder = recording
-        return audio.blocks
-            .onEach { recording?.audio(listOf(it)) }
-            .detectNotes(
-                audio.sampleRate, preferences.referenceAHz,
-                onNote = { recording?.detected(it) },
-                onLevel = { microphoneLevel = it },
-            )
+        val blocks = if (rendered != null) audio.blocksWith(rendered::playedAudio) else audio.blocks.map { AudioBlock(it) }
+        return blocks
+            .onEach { block -> recording?.audio(listOfNotNull(block.microphone, block.reference)) }
+            .detectedNotes(audio.sampleRate, preferences.referenceAHz, onLevel = { microphoneLevel = it }, parameters = parameters)
+            .onEach { recording?.detected(it) }
             .flowOn(Dispatchers.Default)
             // Evaluated where the exercise runs, which is also where the gate sees the notes played.
-            .filter { ownSound?.accepts(it) ?: true }
+            .filter { note -> note.midiNote in 0..127 && (note.ownSoundRemoved || ownSound?.accepts(note.toNoteOn()) ?: true) }
+            .map { it.toNoteOn() }
             .onEach { recording?.accepted(it) }
     }
 
@@ -367,14 +400,36 @@ class AppController(
         val recording = recorder ?: return
         recorder = null
         runCatching { withContext(Dispatchers.Default) { recording.finish(recordingInfo) } }
-            .onSuccess { message = "Recording saved: ${recording.name}" }
+            .onSuccess {
+                message = "Recording saved: ${recording.name}"
+                if (preferences.optimizationMode) runSummary = RunSummary(recording.name, recording.summary())
+            }
             .onFailure { message = "Could not save the recording: ${it.message}" }
     }
 
+    /**
+     * The app's own rendering of the chosen MIDI output, if it can do that (Gervill on the
+     * desktop), so its sound can be removed from the microphone signal; null otherwise.
+     */
+    private fun openRenderedOutput(sampleRate: Int): RenderedOutputPort? {
+        val synth = services.renderedSynth ?: return null
+        refreshDevices()
+        if (selectedOutputDevice() != synth.deviceName) return null
+        val port = runCatching { synth.open(sampleRate) }.getOrElse {
+            message = "The app's own sound cannot be removed (${it.message}); input matching it is ignored while it plays."
+            return null
+        }
+        output = port
+        Tuning.messages(preferences.referenceAHz).forEach(port::send)
+        return port
+    }
+
+    private fun selectedOutputDevice(): String? =
+        preferences.midiOutputDevice?.takeIf { it in outputDevices } ?: defaultDevice(outputDevices)
+
     private fun openOutput(): MidiOutputPort {
         refreshDevices()
-        val outputName = preferences.midiOutputDevice?.takeIf { it in outputDevices } ?: defaultDevice(outputDevices)
-            ?: error("No MIDI output device found.")
+        val outputName = selectedOutputDevice() ?: error("No MIDI output device found.")
         val port = services.midi.openOutput(outputName)
         output = port
         Tuning.messages(preferences.referenceAHz).forEach(port::send)
@@ -408,6 +463,7 @@ class AppController(
                     preferences.referenceAHz,
                     onNote = { micTestNote = it },
                     onLevel = { microphoneLevel = it },
+                    parameters = preferences.detectionParameters,
                 )
                 .flowOn(Dispatchers.Default)
                 .collect()
@@ -515,6 +571,10 @@ class AppController(
 
     fun setInputSource(source: InputSource) = updatePreferences { it.copy(inputSource = source) }
     fun setUsesHeadphones(uses: Boolean) = updatePreferences { it.copy(usesHeadphones = uses) }
+    fun setOptimizationMode(on: Boolean) = updatePreferences { it.copy(optimizationMode = on) }
+    fun setOptimizationSteps(steps: Int) =
+        updatePreferences { it.copy(optimizationSteps = steps.coerceIn(OPTIMIZATION_STEP_RANGE)) }
+    fun setDetectionParameters(parameters: DetectionParameters) = updatePreferences { it.copy(detectionParameters = parameters) }
     fun setRecordMicrophone(record: Boolean) = updatePreferences { it.copy(recordMicrophone = record) }
     val recordingsLocation: String? get() = services.recordings?.location
     fun setLateAnswerTolerance(millis: Int) =
@@ -599,3 +659,6 @@ class AppController(
         private const val AUTOSAVE_DELAY_MILLIS = 800L
     }
 }
+
+/** What a run in optimization mode recorded, step by step. */
+class RunSummary(val recording: String, val steps: List<StepSummary>)

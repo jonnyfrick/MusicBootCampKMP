@@ -113,8 +113,10 @@ private fun MicrophoneSettings(controller: AppController) {
         if (preferences.usesHeadphones) {
             "Notes you play are recognised at any time."
         } else {
-            "Without headphones the microphone hears the app too, so while it plays a note, that note and its " +
-                "octaves are ignored; other notes count."
+            "Without headphones the microphone hears the app too. With \"Gervill\" as MIDI Out the app removes its " +
+                "own sound, so every note counts, also the one it plays (it needs a few notes at the start of an " +
+                "exercise to learn your room; until then, as with other outputs, the note the app is playing and " +
+                "its octaves are ignored while it sounds)."
         },
     )
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -130,8 +132,8 @@ private fun MicrophoneSettings(controller: AppController) {
         Text("${preferences.lateAnswerToleranceMillis} ms", Modifier.width(90.dp))
     }
     Hint(
-        "A note you strike up to this long after the next note has started still answers the previous one, " +
-            "if that had no answer yet.",
+        "A note you strike up to this long after the next note has started still answers the note before " +
+            "(at a fast tempo also after several notes), if that had no answer yet.",
     )
     controller.recordingsLocation?.let { location ->
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -167,6 +169,8 @@ private fun MicrophoneSettings(controller: AppController) {
         }
     }
     Hint("Relative to Kammerton A below. The level bar should move clearly when you play.")
+    Spacer(Modifier.height(8.dp))
+    OptimizationSettings(controller)
 }
 
 @Composable

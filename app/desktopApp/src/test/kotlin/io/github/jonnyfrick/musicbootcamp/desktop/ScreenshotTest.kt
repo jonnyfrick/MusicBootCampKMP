@@ -121,6 +121,8 @@ class ScreenshotTest {
         click(TEST_MIDI_X, MIDI_TEST_BUTTONS_Y) // "Stop test"
         synchronized(midi.sent) { midi.sent.clear() }
         click(MICROPHONE_RADIO_X, MICROPHONE_RADIO_Y); snapshot("4b-preferences-microphone")
+        click(OPTIMIZATION_SWITCH_X, OPTIMIZATION_SWITCH_Y); snapshot("4d-preferences-optimization")
+        click(OPTIMIZATION_SWITCH_X, OPTIMIZATION_SWITCH_Y)
         click(MIDI_RADIO_X, MIDI_RADIO_Y)
 
         click(112f, tabY)
@@ -151,3 +153,5 @@ private const val MIDI_RADIO_X = 118f
 private const val MIDI_RADIO_Y = 194f
 private const val MICROPHONE_RADIO_X = 118f
 private const val MICROPHONE_RADIO_Y = 222f
+private const val OPTIMIZATION_SWITCH_X = 131f
+private const val OPTIMIZATION_SWITCH_Y = 660f

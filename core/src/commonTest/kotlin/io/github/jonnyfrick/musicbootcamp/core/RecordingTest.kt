@@ -4,9 +4,16 @@ import io.github.jonnyfrick.musicbootcamp.core.audio.RecordingEventType
 import io.github.jonnyfrick.musicbootcamp.core.audio.RecordingFile
 import io.github.jonnyfrick.musicbootcamp.core.audio.RecordingLog
 import io.github.jonnyfrick.musicbootcamp.core.audio.SessionRecorder
+import io.github.jonnyfrick.musicbootcamp.core.audio.StepSummary
 import io.github.jonnyfrick.musicbootcamp.core.audio.Wav
+import io.github.jonnyfrick.musicbootcamp.core.pitch.DetectionParameters
+import io.github.jonnyfrick.musicbootcamp.core.pitch.detectionParametersFromJson
+import io.github.jonnyfrick.musicbootcamp.core.pitch.toJson
 import io.github.jonnyfrick.musicbootcamp.core.midi.MidiMessage
+import io.github.jonnyfrick.musicbootcamp.core.persistence.DETECTION_PARAMETERS_REVISION
+import io.github.jonnyfrick.musicbootcamp.core.persistence.InMemoryDocumentStore
 import io.github.jonnyfrick.musicbootcamp.core.persistence.SetupRepository
+import kotlinx.coroutines.test.runTest
 import io.github.jonnyfrick.musicbootcamp.core.pitch.DetectedNote
 import io.github.jonnyfrick.musicbootcamp.core.practice.Evaluation
 import io.github.jonnyfrick.musicbootcamp.core.practice.StepResult
@@ -79,5 +86,51 @@ class RecordingTest {
             ),
             log.events.map { it.sample to it.type },
         )
+    }
+
+    @Test
+    fun summaryGroupsEventsByStep() {
+        val file = MemoryFile()
+        val recorder = SessionRecorder(file, 44_100, listOf("microphone"))
+        fun step(given: Int, previous: Boolean?) =
+            recorder.step(StepResult(previousCorrect = previous, storedMistake = false, given = listOf(given), startedNotes = listOf(given)))
+
+        step(60, null)
+        recorder.audio(listOf(FloatArray(1000)))
+        recorder.detected(DetectedNote(60, 261.6, 0.0, sampleTime = 900))
+        recorder.accepted(MidiMessage.noteOn(60, 100))
+        step(62, previous = true)
+        recorder.audio(listOf(FloatArray(1000)))
+        recorder.evaluation(Evaluation(correct = false, storedMistake = false)) // the last step, at the end
+        recorder.finish(emptyMap())
+
+        assertEquals(
+            listOf(
+                StepSummary(1, listOf(60), detected = listOf(60), accepted = listOf(60), correct = true),
+                StepSummary(2, listOf(62), detected = emptyList(), accepted = emptyList(), correct = false),
+            ),
+            recorder.summary(),
+        )
+    }
+
+    @Test
+    fun detectionParametersRoundTripAndPartialOverrides() {
+        val tuned = DetectionParameters(rawRise = 1.3, echoCancellation = false)
+        assertEquals(tuned, detectionParametersFromJson(tuned.toJson()))
+        assertEquals(DetectionParameters(rawRise = 1.3), detectionParametersFromJson("""{"rawRise":1.3}"""))
+    }
+
+    @Test
+    fun detectionParametersFromOlderDefaultsAreReset() = runTest {
+        val store = InMemoryDocumentStore()
+        val repository = SetupRepository(store)
+        // As written before the revision existed, with a default that was changed since.
+        store.write("preferences.json", """{"version":1,"detectionParameters":{"fallbackMargin":2.0,"rawRise":1.3}}""")
+        val loaded = repository.loadPreferences()
+        assertEquals(DetectionParameters(), loaded.detectionParameters)
+        assertEquals(DETECTION_PARAMETERS_REVISION, loaded.detectionParametersRevision)
+
+        repository.savePreferences(loaded.copy(detectionParameters = DetectionParameters(rawRise = 1.3)))
+        assertEquals(DetectionParameters(rawRise = 1.3), repository.loadPreferences().detectionParameters, "current ones stay")
     }
 }

@@ -139,10 +139,15 @@ off-screen into `app/desktopApp/build/screenshots` and runs an exercise against 
   tests still pass. Tests: `CoreTest.learnedSequencesOutsideTheRangeDoNotLeadTheExerciseAway`,
   `CoreTest.randomStepsFindBackIntoTheRange`.
 - **Late answers with the microphone.** In Java a key press counted for whichever step was running
-  when it arrived. With microphone input, a step still without an answer when the next note starts
-  now waits for the late-answer tolerance: key presses in that time answer the previous step
-  (`PracticeSession.step(deferEvaluation = true)`, `PracticeRunner(lateAnswerTolerance = …)`,
-  capped at half the step period). The next note still starts on time. A step answered in time is
+  when it arrived. With microphone input (single notes), a step still without an answer when the
+  next note starts stays open for the late-answer tolerance (`PracticeSession.step(deferEvaluation
+  = true)`, `PracticeRunner(lateAnswerTolerance = …)`); at a fast tempo several steps can be open.
+  A key press answers the oldest open step — or, if it is exactly the note of a later open step,
+  that one, and the older ones count as missed, so a skipped note or a false stroke does not shift
+  all later answers by a step; a key press that is the note of a step just given up (too late) and
+  of no open one is ignored for the same reason. (At first the tolerance was capped at half the step period and only
+  the previous step could be answered; at 0.7 s breathing time answers 1.2 s after their note were
+  then lost.) The next note still starts on time. A step answered in time is
   evaluated at once as before, so the exercise and the random numbers consumed are unchanged; only
   a deferred evaluation stores its mistake after the next note was chosen, so it can influence the
   steps after the next one only. MIDI input keeps the Java behaviour (tolerance 0). Tests:
@@ -177,22 +182,63 @@ messages, so the exercise logic is the same as with a MIDI keyboard.
   hop, then the pitch must agree over two windows. The window just before the stroke is removed
   from the power spectrum, so a still ringing previous note (legato, sustain pedal) does not merge
   with the new one into a lower common pitch. Latency about 50 ms. The Kammerton A is taken into account.
+- Removing the app's own sound (no headphones, "Gervill" as MIDI Out): the desktop app renders
+  Gervill itself (`desktop/GervillSynth`, via `com.sun.media.sound.AudioSynthesizer.openStream`,
+  which needs `--add-exports java.desktop/com.sun.media.sound=ALL-UNNAMED`) and plays it through
+  its own `SourceDataLine`, so it knows the samples the loudspeaker plays. The microphone port
+  pairs each block with the same number of played samples on its reading thread
+  (`AudioInputPort.blocksWith`). `core/pitch/EchoEstimator` predicts the app's sound in the
+  microphone from them, on power spectra: the delay by votes (after each onset of the reference,
+  the lag of the steepest rise in the microphone; the player's much louder strokes made a
+  correlation of whole envelopes fail in real recordings), a gain per 1/6 octave
+  as the median ratio microphone/reference (learned only while the player is not playing),
+  reverberation as a slowest decay, times 2 as a margin. `NoteTracker` then detects strokes on
+  what exceeds the prediction (and requires the total level to rise, and near the app's own
+  onsets to stand out against its sound), and `PitchDetector` removes the predicted spectrum.
+  Until the prediction is ready (a few notes into an exercise; in a room where the app is too
+  quiet in the microphone to measure, never), `OwnSoundGate` applies instead: only the app's
+  current note (and octaves) is ignored, so late answers to the previous note count at once.
+  (At first input was simply blocked then, which in real recordings — app 20 dB below the piano,
+  delay never found — blocked every other run completely; a level threshold learned from the
+  microphone, `fallbackMargin`, now off by default, failed when the player plays all the time.)
+  Within 400 ms after a recognised note, a new stroke over the app's sound must raise the total
+  level by `followUpRise` (2.5×): the rest of the note beats with the app's sound, and one such
+  false stroke once shifted all later answers by a step. With the prediction ready every note
+  counts, including the one the app is playing. With other outputs
+  `OwnSoundGate` below is used. Tests: `EchoCancellationTest` (synthetic room with reflections,
+  reverberation and noise). The NSDF is now capped at 1: after removing a background, long lags
+  could exceed it and push the true first peak below the threshold (sub-octave errors); without a
+  background it is ≤ 1 anyway.
 - `core/practice/OwnSoundGate` – without headphones the microphone hears the app's own notes.
   While an app note sounds and 200 ms after it, detected notes are ignored if they are that note
   or an octave of it (a typical detection error); other notes count. (At first all input was
   ignored then, which left too little time at fast tempos: at 1 s breathing time and 50 % sustain
   only the last 300 ms of a step.) A correct answer played while the same note still sounds is
   still ignored; subtracting the app's own sound from the microphone signal is planned.
-- Late answers: see "Deliberate changes". The tolerance (Preferences → "Late answers", 0–300 ms,
+- Late answers: see "Deliberate changes". The tolerance (Preferences → "Late answers", 0–1000 ms,
   default 150 ms, `lateAnswerToleranceMillis` in `preferences.json`) counts from the key stroke:
   `NoteTracker.detectionDelay` (about 58 ms) is added, because the note reaches the exercise only
   once it is recognised. Audio buffering (one 11.6 ms block on the desktop) is not added.
 - Recording (Preferences → "Record exercises", off by default): `core/audio/SessionRecorder` writes
   the audio the detection gets as a WAV file and a JSON log (`RecordingLog`: app note on/off,
   steps, detected and accepted notes, evaluations, each with its sample position) to
-  `recordings/session-<date>_<time>.wav/.json` in the data directory. Exercise events are placed at
+  `recordings/session-<date>_<time>.wav/.json` in the data directory; with the app's own sound
+  removed, the WAV has a second channel with what the loudspeaker played. Exercise events are placed at
   the end of the audio received so far (±1 block). `RecordingReplayTest` replays them through
   `NoteTracker` (see README). Recordings are personal data: never commit them.
+- `preferences.json` stores the detection parameters with `detectionParametersRevision`; values
+  from an older revision are reset to the current defaults on loading, so a default changed later
+  (e.g. `fallbackMargin` 2 → 0) does not linger.
+- Optimization mode (Preferences → Microphone): every exercise stops by itself after n notes
+  (`PracticeRunner(maxSteps = …)`; no next note follows the last one, so its answer may come up
+  to one step period after the tolerance)
+  and is recorded; the detection parameters (`core/pitch/DetectionParameters`, stored in
+  `preferences.json`, defaults = the tuned constants) can be edited, and the Practice tab lists
+  the last run step by step (`summarize`), so the player can report where they played something
+  else. Recordings store the parameters they were made with. `RecordingReplayTest` analyses
+  recordings: a step table with each recognition mistake classified, a CSV of every hop's
+  decisions (`NoteTracker.trace`) and a spectrogram PNG (microphone, reference, predicted own
+  sound, levels), optionally a parameter sweep (see README).
 - Desktop capture: `app/shared/src/jvmMain/.../JavaSoundAudio.kt` (javax.sound.sampled, 44.1 kHz
   mono). Other platforms have the `AudioInputBackend` interface but no implementation yet
   (Android `AudioRecord`, iOS `AVAudioEngine`, web `getUserMedia` + AudioWorklet).

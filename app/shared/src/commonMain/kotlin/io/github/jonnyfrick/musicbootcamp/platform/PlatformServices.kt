@@ -5,8 +5,10 @@ import io.github.jonnyfrick.musicbootcamp.core.midi.MidiMessage
 import io.github.jonnyfrick.musicbootcamp.core.midi.MidiOutput
 import io.github.jonnyfrick.musicbootcamp.core.persistence.DocumentStore
 import io.github.jonnyfrick.musicbootcamp.core.persistence.InMemoryDocumentStore
+import io.github.jonnyfrick.musicbootcamp.core.pitch.AudioBlock
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.map
 
 /** An opened MIDI output (synth or instrument). */
 interface MidiOutputPort : MidiOutput {
@@ -48,6 +50,14 @@ interface AudioInputPort {
     val sampleRate: Int
     /** Cold flow: recording runs while it is collected. */
     val blocks: Flow<FloatArray>
+
+    /**
+     * Like [blocks], each with [reference] called for the same number of samples as soon as
+     * the block was read (implementations call it on the reading thread, to keep both in step).
+     */
+    fun blocksWith(reference: (frames: Int) -> FloatArray): Flow<AudioBlock> =
+        blocks.map { AudioBlock(it, reference(it.size)) }
+
     fun close()
 }
 
@@ -65,6 +75,25 @@ interface AudioInputBackend {
 class UnsupportedAudioInput(override val unavailableReason: String) : AudioInputBackend {
     override fun devices(): List<String> = emptyList()
     override fun open(name: String?): AudioInputPort = throw UnsupportedOperationException(unavailableReason)
+}
+
+/** An output the app renders itself, so it knows exactly what the loudspeaker plays. */
+interface RenderedOutputPort : MidiOutputPort {
+    /**
+     * The next [frames] samples of what the loudspeaker plays (mono, at the sample rate it was
+     * opened with), continuing where the previous call ended. Call it right after reading the
+     * same number of microphone samples, so both stay roughly in step.
+     */
+    fun playedAudio(frames: Int): FloatArray
+}
+
+/** A software synthesizer the app can render itself (desktop: Java's Gervill). */
+interface RenderedSynth {
+    /** The name of the MIDI output device it stands in for, e.g. "Gervill". */
+    val deviceName: String
+
+    /** Opens a new instance playing through the default audio output; throws if that fails. */
+    fun open(sampleRate: Int): RenderedOutputPort
 }
 
 /** Where practice sessions with the microphone are recorded (audio and event log). */
@@ -97,6 +126,8 @@ class PlatformServices(
     val audio: AudioInputBackend = UnsupportedAudioInput("Microphone input is only implemented in the desktop app so far."),
     /** Null where there is no file system to record into. */
     val recordings: RecordingStore? = null,
+    /** Null where the app cannot render its sound itself (then its own sound cannot be removed). */
+    val renderedSynth: RenderedSynth? = null,
 ) {
     companion object {
         /** For Android, iOS and web until their MIDI and storage implementations exist. */

@@ -22,6 +22,7 @@ fun desktopServices(dataDirectory: File = defaultDataDirectory()) = PlatformServ
     legacyFiles = AwtLegacyFilePicker(),
     audio = JavaSoundAudioInput(),
     recordings = FileRecordingStore(File(dataDirectory, "recordings")),
+    renderedSynth = GervillSynth(),
 )
 
 /**

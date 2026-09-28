@@ -1,5 +1,6 @@
 package io.github.jonnyfrick.musicbootcamp.core.persistence
 
+import io.github.jonnyfrick.musicbootcamp.core.pitch.DetectionParameters
 import kotlinx.serialization.json.Json
 
 /** Minimal text-file storage the platforms provide (a directory on desktop). */
@@ -50,9 +51,13 @@ class SetupRepository(private val store: DocumentStore) {
 
     suspend fun delete(name: String) = store.delete(fileName(name))
 
-    suspend fun loadPreferences(): AppPreferences =
-        store.read(PREFERENCES)?.let { runCatching { json.decodeFromString(AppPreferences.serializer(), it) }.getOrNull() }
+    suspend fun loadPreferences(): AppPreferences {
+        val stored = store.read(PREFERENCES)?.let { runCatching { json.decodeFromString(AppPreferences.serializer(), it) }.getOrNull() }
             ?: AppPreferences()
+        // Detection parameters tuned against older defaults start over from the current ones.
+        return if (stored.detectionParametersRevision >= DETECTION_PARAMETERS_REVISION) stored
+        else stored.copy(detectionParameters = DetectionParameters(), detectionParametersRevision = DETECTION_PARAMETERS_REVISION)
+    }
 
     suspend fun savePreferences(preferences: AppPreferences) {
         store.write(PREFERENCES, json.encodeToString(AppPreferences.serializer(), preferences))

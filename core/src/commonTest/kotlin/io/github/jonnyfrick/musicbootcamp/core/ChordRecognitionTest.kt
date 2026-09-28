@@ -3,6 +3,7 @@ package io.github.jonnyfrick.musicbootcamp.core
 import io.github.jonnyfrick.musicbootcamp.core.pitch.ChordTracker
 import io.github.jonnyfrick.musicbootcamp.core.pitch.DetectedChord
 import io.github.jonnyfrick.musicbootcamp.core.pitch.PianoCalibration
+import io.github.jonnyfrick.musicbootcamp.core.pitch.matchIgnoringOctaves
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -124,5 +125,25 @@ class ChordRecognitionTest {
         val chordBuffer = chord(listOf(48, 50))
         val found = chordBuffer.indices.chunked(512).flatMap { tracker.process(chordBuffer.sliceArray(it.first()..it.last())) }
         assertEquals(listOf(listOf(48, 50)), found.map { it.notes })
+    }
+
+    @Test
+    fun octavesCanCountAsCorrect() {
+        val expected = listOf(listOf(52, 49), listOf(54, 54))
+        assertEquals(listOf(54, 54), matchIgnoringOctaves(listOf(54, 66), expected), "a unison heard with its octave")
+        assertEquals(listOf(52, 49), matchIgnoringOctaves(listOf(49, 64), expected), "one voice an octave off")
+        assertEquals(null, matchIgnoringOctaves(listOf(49, 55), expected), "a wrong note stays wrong")
+        assertEquals(listOf(60), matchIgnoringOctaves(listOf(48), listOf(listOf(60))), "single notes too")
+    }
+
+    @Test
+    fun calibrationTakesTheAskedNoteInAnotherOctave() {
+        // Found live: the model heard a real C3 as C4, so C3 could not be calibrated.
+        val calibration = PianoCalibration(sampleRate, listOf(48), 440.0)
+        val buffer = FloatArray((1.5 * sampleRate).toInt())
+        addPianoStroke(buffer, 60, startSeconds = 0.2, durationSeconds = 0.6) // heard an octave off
+        buffer.indices.chunked(512).forEach { calibration.process(buffer.sliceArray(it.first()..it.last())) }
+        assertEquals(null, calibration.target)
+        assertEquals(setOf(48), calibration.result().notes.keys)
     }
 }

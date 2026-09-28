@@ -213,3 +213,12 @@ fun DetectedChord.toNoteOns(voices: Int): List<MidiMessage> =
     List(voices) { i -> notes.getOrElse(i) { notes.last() } }.map { MidiMessage.noteOn(it, DETECTED_CHORD_VELOCITY) }
 
 private const val DETECTED_CHORD_VELOCITY = 100
+
+/**
+ * With octaves counting as correct: the expected chord (the latest first) whose pitch classes are
+ * exactly those of [notes], or null. A unison may come back as the note and its octave.
+ */
+fun matchIgnoringOctaves(notes: List<Int>, expected: List<List<Int>>): List<Int>? {
+    val classes = notes.map { it.mod(12) }.toSet()
+    return expected.asReversed().firstOrNull { chord -> chord.map { it.mod(12) }.toSet() == classes }
+}

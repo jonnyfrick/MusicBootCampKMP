@@ -120,6 +120,12 @@ private fun MicrophoneSettings(controller: AppController) {
         },
     )
     Row(verticalAlignment = Alignment.CenterVertically) {
+        Switch(checked = preferences.octavesCountAsCorrect, onCheckedChange = controller::setOctavesCountAsCorrect, enabled = !running)
+        Spacer(Modifier.width(12.dp))
+        Text("Right notes in another octave count")
+    }
+    Hint("The recognition mistakes octaves far more often than you do (a piano's low notes have weak fundamentals).")
+    Row(verticalAlignment = Alignment.CenterVertically) {
         Text("Late answers", Modifier.width(140.dp))
         Slider(
             value = preferences.lateAnswerToleranceMillis.toFloat(),

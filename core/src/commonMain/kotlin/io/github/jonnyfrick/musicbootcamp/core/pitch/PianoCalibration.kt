@@ -40,9 +40,11 @@ class PianoCalibration(
         var learnedOne = false
         for (chord in tracker.process(samples)) {
             val spectrum = lastSpectrum ?: continue
-            // The asked note, or it clearly dominating (the model templates may misjudge a real piano).
+            // The asked note — or its pitch class: the piano model often misjudges the octave of a
+            // real piano (weak bass fundamentals), which is exactly what the calibration is for.
             val strongest = chord.details.activations.firstOrNull()
-            if (chord.notes == listOf(asked) || strongest?.first == asked && strongest.second > DOMINANT) {
+            val sameClass = chord.notes.isNotEmpty() && chord.notes.all { (it - asked) % 12 == 0 }
+            if (sameClass || strongest != null && (strongest.first - asked) % 12 == 0 && strongest.second > DOMINANT) {
                 learned[asked] = spectrum.toList()
                 lastHeard = null
                 index++

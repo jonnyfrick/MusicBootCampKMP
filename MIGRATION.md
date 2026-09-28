@@ -152,6 +152,11 @@ off-screen into `app/desktopApp/build/screenshots` and runs an exercise against 
   a deferred evaluation stores its mistake after the next note was chosen, so it can influence the
   steps after the next one only. MIDI input keeps the Java behaviour (tolerance 0). Tests:
   `LateAnswerTest`.
+- **Octaves count as correct with the microphone** (Preferences → Microphone, on by default): a
+  recognised note or chord with exactly the pitch classes of one of the last given ones counts as
+  that one (`matchIgnoringOctaves`). The recognition confuses octaves far more often than the
+  player (weak bass fundamentals of real pianos; a unison heard with its octave), so this removes
+  many false mistakes; playing in the wrong octave is no longer caught. MIDI input is unchanged.
 - **Given notes hidden by default.** The point is to hear them; "Show notes" on the Practice tab
   reveals them (stored in `preferences.json`).
 - **Settings edited in place** (no OK/Cancel dialogs); they are locked while an exercise runs,
@@ -272,8 +277,9 @@ several voices).
 - `core/pitch/PianoTemplates`: a piano model (inharmonic partials, weak bass fundamental,
   partials decaying faster the higher they are) run through the same FFT and log mapping as the
   measurement, or the player's piano: Preferences → optimization mode → "Calibrate piano" asks
-  for every note of the range once (`PianoCalibration`, measured exactly like a chord, a slip is
-  asked again) and stores `piano-templates.json` in the data directory; notes without one use the
+  for every note of the range once (`PianoCalibration`, measured exactly like a chord; a stroke
+  of the asked pitch class counts in any octave — the model heard a real C3 as C4 —, another
+  note is asked again) and stores `piano-templates.json` in the data directory; notes without one use the
   nearest learned note (within 6 semitones) moved along the log axis.
 - A recognised chord goes to the exercise as one note-on per voice (a unison or a missing note
   repeats a note), so the two-voice corrector evaluates it unchanged; with a late-answer

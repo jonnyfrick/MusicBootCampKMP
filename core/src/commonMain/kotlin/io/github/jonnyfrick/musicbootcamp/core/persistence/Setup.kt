@@ -96,6 +96,11 @@ data class AppPreferences(
      * a value a later version changed its mind about does not linger (see [SetupRepository.loadPreferences]).
      */
     val detectionParametersRevision: Int = 0,
+    /**
+     * Microphone input: a note or chord with the right pitch classes counts as the given one, in
+     * whatever octave (octave errors of the recognition are far more common than of the player).
+     */
+    val octavesCountAsCorrect: Boolean = true,
     /** Chord recognition (microphone, several voices), per number of voices. */
     val chordDetectionParameters: Map<Int, ChordDetectionParameters> = emptyMap(),
 ) {

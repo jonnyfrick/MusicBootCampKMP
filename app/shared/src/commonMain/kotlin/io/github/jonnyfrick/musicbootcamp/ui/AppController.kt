@@ -47,6 +47,7 @@ import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import io.github.jonnyfrick.musicbootcamp.core.pitch.toNoteOns
 import io.github.jonnyfrick.musicbootcamp.core.pitch.detectedChords
+import io.github.jonnyfrick.musicbootcamp.core.pitch.matchIgnoringOctaves
 import io.github.jonnyfrick.musicbootcamp.core.pitch.LearnedTemplates
 import io.github.jonnyfrick.musicbootcamp.core.pitch.ChordDetectionParameters
 import io.github.jonnyfrick.musicbootcamp.core.pitch.PianoCalibration
@@ -318,6 +319,7 @@ class AppController(
             "optimizationSteps" to (optimizationSteps?.toString() ?: ""),
             "detectionParameters" to preferences.detectionParameters.toJson(),
             "voices" to settings.mode.voices.toString(),
+            "octavesCountAsCorrect" to preferences.octavesCountAsCorrect.toString(),
             "range" to "${settings.lowLimit}..${settings.highLimit}",
             "chordDetectionParameters" to preferences.chordParameters(settings.mode.voices).toJson(),
         )
@@ -412,8 +414,8 @@ class AppController(
         }
         recorder = recording
         val blocks = if (rendered != null) audio.blocksWith(rendered::playedAudio) else audio.blocks.map { AudioBlock(it) }
+        expectedChords.value = emptyList()
         if (voices > 1) {
-            expectedChords.value = emptyList()
             return blocks
                 .onEach { block -> recording?.audio(listOfNotNull(block.microphone, block.reference)) }
                 .detectedChords(
@@ -424,6 +426,7 @@ class AppController(
                 .onEach { recording?.detectedChord(it) }
                 .flowOn(Dispatchers.Default)
                 .filter { chord -> chord.ownSoundRemoved || ownSound?.acceptsChord(chord.notes) ?: true }
+                .map { chord -> chord.copy(notes = octaveMatch(chord.notes) ?: chord.notes) }
                 .flatMapConcat { chord -> chord.toNoteOns(voices).asFlow() }
                 .onEach { recording?.accepted(it) }
         }
@@ -434,9 +437,13 @@ class AppController(
             .flowOn(Dispatchers.Default)
             // Evaluated where the exercise runs, which is also where the gate sees the notes played.
             .filter { note -> note.midiNote in 0..127 && (note.ownSoundRemoved || ownSound?.accepts(note.toNoteOn()) ?: true) }
-            .map { it.toNoteOn() }
+            .map { note -> note.copy(midiNote = octaveMatch(listOf(note.midiNote))?.first() ?: note.midiNote).toNoteOn() }
             .onEach { recording?.accepted(it) }
     }
+
+    /** With octaves counting as correct: the given chord (or note) these notes are in another octave. */
+    private fun octaveMatch(notes: List<Int>): List<Int>? =
+        if (preferences.octavesCountAsCorrect) matchIgnoringOctaves(notes, expectedChords.value) else null
 
     /** Writes the header and the log of a recorded session; the audio has stopped by now. */
     private suspend fun finishRecording() {
@@ -696,6 +703,7 @@ class AppController(
 
     fun setInputSource(source: InputSource) = updatePreferences { it.copy(inputSource = source) }
     fun setUsesHeadphones(uses: Boolean) = updatePreferences { it.copy(usesHeadphones = uses) }
+    fun setOctavesCountAsCorrect(on: Boolean) = updatePreferences { it.copy(octavesCountAsCorrect = on) }
     fun setOptimizationMode(on: Boolean) = updatePreferences { it.copy(optimizationMode = on) }
     fun setOptimizationSteps(steps: Int) =
         updatePreferences { it.copy(optimizationSteps = steps.coerceIn(OPTIMIZATION_STEP_RANGE)) }

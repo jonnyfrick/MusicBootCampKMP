@@ -64,20 +64,25 @@ class PracticeSession(
     private val open = ArrayDeque<OpenStep>()
     private var deferring = false
 
-    /** Notes of the last steps given up unanswered: a key press for one of them came too late. */
-    private val missedLately = ArrayDeque<Int>()
+    /** Chords (distinct notes) of the last steps given up unanswered: an answer to one came too late. */
+    private val missedLately = ArrayDeque<List<Int>>()
 
-    private class OpenStep(val number: Int, val given: Int) {
-        var answer: Int? = null
+    /** Note-ons of a chord answer still arriving (a recognised chord comes as one note-on per voice). */
+    private val chordBuffer = mutableListOf<Int>()
+
+    private class OpenStep(val number: Int, val given: List<Int>) {
+        var answer: List<Int>? = null
         /** Answered, or given up (its time is over, or a later step got the answer). */
         var resolved = false
+        val chord: List<Int> get() = given.distinct().sorted()
     }
 
     /**
      * Java: `AddToCorrectorReceiver` — only real key presses count.
      *
-     * With a tolerance, a key press answers the oldest open step — or, if it is exactly the note of
-     * a later open step, that one, and the older ones count as missed (so a skipped note or a
+     * With a tolerance, an answer — a note, or with several voices one note-on per voice, as the
+     * chord recognition sends them — goes to the oldest open step; or, if it is exactly the chord of
+     * a later open step, to that one, and the older ones count as missed (so a skipped step or a
      * false stroke does not shift all later answers). Returns the evaluations this completes.
      */
     fun onMidiInput(message: MidiMessage): List<Evaluation> {
@@ -86,13 +91,18 @@ class PracticeSession(
             corrector.addRecorded(message.data1)
             return emptyList()
         }
+        chordBuffer += message.data1
+        if (chordBuffer.size < settings.mode.voices) return emptyList()
+        val answer = chordBuffer.toList()
+        chordBuffer.clear()
+
         val waiting = open.filter { !it.resolved }
-        if (waiting.isEmpty()) return emptyList() // only the first key press of a step counts
-        val note = message.data1
-        val matching = waiting.firstOrNull { it.given == note }
+        if (waiting.isEmpty()) return emptyList() // only the first answer of a step counts
+        val chord = answer.distinct().sorted()
+        val matching = waiting.firstOrNull { it.chord == chord }
         // Just too late for its own step: it must not take the answer of the next one.
-        if (matching == null && note in missedLately) {
-            missedLately.remove(note)
+        if (matching == null && chord in missedLately) {
+            missedLately.remove(chord)
             return emptyList()
         }
         val target = matching ?: waiting.first()
@@ -100,7 +110,7 @@ class PracticeSession(
             if (step === target) break
             step.resolved = true // missed
         }
-        target.answer = note
+        target.answer = answer
         target.resolved = true
         return evaluateResolved()
     }
@@ -118,7 +128,7 @@ class PracticeSession(
     /**
      * Ends the current step and gives the next note(s).
      *
-     * With [deferEvaluation] (monophonic only), a step without an answer yet stays open: the next
+     * With [deferEvaluation], a step without an answer yet stays open: the next
      * note starts on time, and key presses may still answer it (see [onMidiInput]) until [expire]
      * is called with its number ([StepResult.openStep]). Evaluating late means a stored mistake can
      * only influence the steps after the next one. A step answered in time is evaluated here, as
@@ -129,7 +139,7 @@ class PracticeSession(
         val sounding = engine.positions()
         sounding.forEach { output.send(MidiMessage.noteOff(it)) }
 
-        val defer = deferEvaluation && voices == 1
+        val defer = deferEvaluation
         var leftOpen: Int? = null
         val evaluation = if (!defer) {
             evaluate()
@@ -145,7 +155,7 @@ class PracticeSession(
 
         engine.changeNotes(voices)
         val given = engine.positions()
-        if (defer) open.addLast(OpenStep(steps, given[0])) else startGiven(given)
+        if (defer) open.addLast(OpenStep(steps, given)) else startGiven(given)
 
         val started = if (voices == 1) listOf(given[0]) else given.distinct() // a unison is played once
         started.forEach { output.send(MidiMessage.noteOn(it, settings.midiOutVelocity)) }
@@ -180,12 +190,12 @@ class PracticeSession(
 
     private fun evaluateStep(step: OpenStep): Evaluation {
         if (step.answer == null) {
-            missedLately.addLast(step.given)
+            missedLately.addLast(step.chord)
             if (missedLately.size > MISSED_REMEMBERED) missedLately.removeFirst()
         }
-        corrector.addGiven(step.given)
+        startGiven(step.given)
         corrector.resetRecorded()
-        step.answer?.let { corrector.addRecorded(it) }
+        step.answer?.forEach { corrector.addRecorded(it) }
         return evaluate()
     }
 

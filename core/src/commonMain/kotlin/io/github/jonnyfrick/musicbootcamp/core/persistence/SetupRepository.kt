@@ -1,6 +1,7 @@
 package io.github.jonnyfrick.musicbootcamp.core.persistence
 
 import io.github.jonnyfrick.musicbootcamp.core.pitch.DetectionParameters
+import io.github.jonnyfrick.musicbootcamp.core.pitch.LearnedTemplates
 import kotlinx.serialization.json.Json
 
 /** Minimal text-file storage the platforms provide (a directory on desktop). */
@@ -59,6 +60,15 @@ class SetupRepository(private val store: DocumentStore) {
         else stored.copy(detectionParameters = DetectionParameters(), detectionParametersRevision = DETECTION_PARAMETERS_REVISION)
     }
 
+    /** The player's piano, as measured by calibration (chord recognition); empty if never done. */
+    suspend fun loadTemplates(): LearnedTemplates =
+        store.read(TEMPLATES)?.let { runCatching { json.decodeFromString(LearnedTemplates.serializer(), it) }.getOrNull() }
+            ?: LearnedTemplates()
+
+    suspend fun saveTemplates(templates: LearnedTemplates) {
+        store.write(TEMPLATES, json.encodeToString(LearnedTemplates.serializer(), templates))
+    }
+
     suspend fun savePreferences(preferences: AppPreferences) {
         store.write(PREFERENCES, json.encodeToString(AppPreferences.serializer(), preferences))
     }
@@ -67,6 +77,7 @@ class SetupRepository(private val store: DocumentStore) {
         private const val SETUP_PREFIX = "setup-"
         private const val SUFFIX = ".json"
         private const val PREFERENCES = "preferences.json"
+        private const val TEMPLATES = "piano-templates.json"
 
         internal val json = Json {
             ignoreUnknownKeys = true

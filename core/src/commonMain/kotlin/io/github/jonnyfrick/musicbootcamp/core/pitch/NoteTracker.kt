@@ -106,6 +106,12 @@ class NoteTracker(
      */
     val detectionDelay: Duration = ((SETTLE_HOPS + confirmFrames) * hop).toDouble().div(sampleRate).seconds
 
+    /** The estimate of the app's own sound, once a reference was given (for the chord analysis). */
+    internal val ownSound: EchoEstimator? get() = echo
+
+    /** Samples per analysis hop. */
+    internal val hopSize: Int get() = hop
+
     /** Receives what happened in every hop, for analysing recordings. */
     var trace: ((HopTrace) -> Unit)? = null
 

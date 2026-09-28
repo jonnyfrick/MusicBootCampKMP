@@ -168,6 +168,9 @@ internal class EchoEstimator(
         return (delay - 2..delay + 2).none { it >= 0 && jump(refEnvelope, it) > ln(REFERENCE_JUMP) }
     }
 
+    /** Predicted power of the app's sound per unit of reference power at [frequencyHz] (with the safety factor). */
+    fun ownSoundGain(frequencyHz: Double): Double = overSubtraction * gain(bandOf(frequencyHz))
+
     /** RMS of what the microphone got beyond the predicted own sound. */
     fun residualLevel(micEnergy: Double): Double = sqrt((micEnergy - hopEchoEnergy).coerceAtLeast(0.0))
 

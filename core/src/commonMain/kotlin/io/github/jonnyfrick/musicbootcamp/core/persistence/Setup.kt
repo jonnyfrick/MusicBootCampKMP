@@ -5,6 +5,7 @@ import io.github.jonnyfrick.musicbootcamp.core.midi.Tuning
 import io.github.jonnyfrick.musicbootcamp.core.model.LearnedSequence
 import io.github.jonnyfrick.musicbootcamp.core.model.PracticeMode
 import io.github.jonnyfrick.musicbootcamp.core.model.PracticeSettings
+import io.github.jonnyfrick.musicbootcamp.core.pitch.ChordDetectionParameters
 import io.github.jonnyfrick.musicbootcamp.core.pitch.DetectionParameters
 import kotlinx.serialization.Serializable
 
@@ -95,7 +96,16 @@ data class AppPreferences(
      * a value a later version changed its mind about does not linger (see [SetupRepository.loadPreferences]).
      */
     val detectionParametersRevision: Int = 0,
-)
+    /**
+     * Microphone input: a note or chord with the right pitch classes counts as the given one, in
+     * whatever octave (octave errors of the recognition are far more common than of the player).
+     */
+    val octavesCountAsCorrect: Boolean = true,
+    /** Chord recognition (microphone, several voices), per number of voices. */
+    val chordDetectionParameters: Map<Int, ChordDetectionParameters> = emptyMap(),
+) {
+    fun chordParameters(voices: Int): ChordDetectionParameters = chordDetectionParameters[voices] ?: ChordDetectionParameters()
+}
 
 /** Raise when the defaults of [DetectionParameters] change in a way stored values should follow. */
 const val DETECTION_PARAMETERS_REVISION = 1
@@ -111,6 +121,6 @@ enum class InputSource {
     /** A MIDI keyboard. */
     MIDI,
 
-    /** An acoustic instrument (piano) via microphone and pitch detection; single notes only for now. */
+    /** An acoustic instrument (piano) via microphone: pitch detection for single notes, chord recognition for several voices. */
     MICROPHONE,
 }

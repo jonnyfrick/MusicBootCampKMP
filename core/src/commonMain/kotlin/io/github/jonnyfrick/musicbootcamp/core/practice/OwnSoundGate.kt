@@ -45,6 +45,9 @@ class OwnSoundGate(
 
     fun isQuiet(): Boolean = sounding.isEmpty() && lastSilence.elapsedNow() >= releaseTime
 
+    /** For a chord: ignored only if every one of its notes could be the app's own. */
+    fun acceptsChord(notes: List<Int>): Boolean = notes.any { accepts(MidiMessage.noteOn(it, 100)) }
+
     /**
      * Whether a detected note-on can be the player's: always when [isQuiet], otherwise only if
      * it is neither a note the app is sounding (or released within [releaseTime]) nor an octave

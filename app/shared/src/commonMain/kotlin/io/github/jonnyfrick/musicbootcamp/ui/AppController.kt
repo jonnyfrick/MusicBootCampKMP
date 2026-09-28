@@ -42,6 +42,15 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.flatMapConcat
+import kotlinx.coroutines.flow.asFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import io.github.jonnyfrick.musicbootcamp.core.pitch.toNoteOns
+import io.github.jonnyfrick.musicbootcamp.core.pitch.detectedChords
+import io.github.jonnyfrick.musicbootcamp.core.pitch.matchIgnoringOctaves
+import io.github.jonnyfrick.musicbootcamp.core.pitch.LearnedTemplates
+import io.github.jonnyfrick.musicbootcamp.core.pitch.ChordDetectionParameters
+import io.github.jonnyfrick.musicbootcamp.core.pitch.PianoCalibration
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
@@ -116,6 +125,13 @@ class AppController(
     private var gate: OwnSoundGate? = null
     private var lateAnswerTolerance = Duration.ZERO
     private var recorder: SessionRecorder? = null
+
+    /** The chords given lately, for the chord recognition (read from the audio thread). */
+    private val expectedChords = MutableStateFlow<List<List<Int>>>(emptyList())
+
+    /** The player's piano as measured by calibration; the chord recognition's templates. */
+    var learnedTemplates by mutableStateOf(LearnedTemplates())
+        private set
     private var recordingInfo: Map<String, String> = emptyMap()
 
     /** Step by step what the last run in optimization mode recorded; shown on the Practice tab. */
@@ -147,6 +163,7 @@ class AppController(
     fun load() {
         launchSafely {
             preferences = repository.loadPreferences()
+            learnedTemplates = repository.loadTemplates()
             val names = repository.setupNames()
             val initial = preferences.lastSetup?.takeIf { it in names } ?: names.firstOrNull()
             setup = initial?.let { runCatching { repository.load(it) }.getOrNull() } ?: Setup(DEFAULT_SETUP_NAME).also { repository.save(it) }
@@ -273,8 +290,6 @@ class AppController(
         val problem = when {
             services.midi.unavailableReason != null -> services.midi.unavailableReason
             microphone && services.audio.unavailableReason != null -> services.audio.unavailableReason
-            microphone && settings.mode != PracticeMode.MONOPHONIC ->
-                "The microphone recognises single notes so far. Choose the monophonic mode or MIDI input."
             !settings.mode.isImplemented -> "The mode '${settings.mode.legacyId}' is not implemented (it was not in the Java version either)."
             settings.intervalPriorities.all { it == 0 } -> "Give at least one interval a weight above 0."
             else -> null
@@ -288,7 +303,7 @@ class AppController(
 
         // Learned sequences are saved when the exercise stops; no background save may touch them meanwhile.
         saveJob?.cancel()
-        val input = runCatching { if (microphone) openMicrophoneInput() else openMidiInput() }.getOrElse {
+        val input = runCatching { if (microphone) openMicrophoneInput(settings) else openMidiInput() }.getOrElse {
             closePorts()
             message = "Could not open the input: ${it.message}"
             return
@@ -303,6 +318,10 @@ class AppController(
             "midiOutputDevice" to (preferences.midiOutputDevice ?: ""),
             "optimizationSteps" to (optimizationSteps?.toString() ?: ""),
             "detectionParameters" to preferences.detectionParameters.toJson(),
+            "voices" to settings.mode.voices.toString(),
+            "octavesCountAsCorrect" to preferences.octavesCountAsCorrect.toString(),
+            "range" to "${settings.lowLimit}..${settings.highLimit}",
+            "chordDetectionParameters" to preferences.chordParameters(settings.mode.voices).toJson(),
         )
         runSummary = null
 
@@ -310,7 +329,11 @@ class AppController(
             scope, settings, setup.memory(), practiceOutput, input,
             lateAnswerTolerance = if (microphone) lateAnswerTolerance else Duration.ZERO,
             maxSteps = optimizationSteps,
-            onStep = { recorder?.step(it) },
+            onStep = { step ->
+                recorder?.step(step)
+                // The chords the player may be answering: the latest few (late answers).
+                expectedChords.value = (expectedChords.value + listOf(step.given)).takeLast(EXPECTED_CHORDS)
+            },
             onEvaluation = { recorder?.evaluation(it) },
         )
         runner = practice
@@ -362,20 +385,27 @@ class AppController(
     }
 
     /** Opens the MIDI output (tuned) and the microphone; returns the recognised notes as note-ons. */
-    private fun openMicrophoneInput(): Flow<MidiMessage> {
+    private fun openMicrophoneInput(settings: PracticeSettings): Flow<MidiMessage> {
         val audio = services.audio.open(preferences.audioInputDevice)
         closers += audio::close
         // Without headphones the microphone hears the app. If the app renders its synthesizer
         // itself, it knows what it played and removes that; until it can (and with other outputs),
         // input matching the app's current note is ignored.
         val parameters = preferences.detectionParameters
-        val rendered = if (preferences.usesHeadphones || !parameters.echoCancellation) null else openRenderedOutput(audio.sampleRate)
+        val voices = settings.mode.voices
+        val chordParameters = preferences.chordParameters(voices)
+        val removeOwnSound = if (voices > 1) chordParameters.strokes.echoCancellation else parameters.echoCancellation
+        val rendered = if (preferences.usesHeadphones || !removeOwnSound) null else openRenderedOutput(audio.sampleRate)
         val midiOutput = rendered ?: openOutput()
         val ownSound = if (preferences.usesHeadphones) null else OwnSoundGate(midiOutput)
         gate = ownSound
         // The tolerance counts from the key stroke; the note arrives only once it is recognised.
-        lateAnswerTolerance = preferences.lateAnswerToleranceMillis.milliseconds +
+        // A chord is decided only after its analysis window.
+        lateAnswerTolerance = preferences.lateAnswerToleranceMillis.milliseconds + if (voices > 1) {
+            chordParameters.windowEndMillis.milliseconds + NoteTracker(audio.sampleRate, parameters = chordParameters.strokes).detectionDelay
+        } else {
             NoteTracker(audio.sampleRate, parameters = parameters).detectionDelay
+        }
         val recording = if (preferences.recordMicrophone || preferences.optimizationMode) {
             val channels = if (rendered != null) listOf("microphone", "reference") else listOf("microphone")
             services.recordings?.let { SessionRecorder(it.create(), audio.sampleRate, channels) }
@@ -384,6 +414,22 @@ class AppController(
         }
         recorder = recording
         val blocks = if (rendered != null) audio.blocksWith(rendered::playedAudio) else audio.blocks.map { AudioBlock(it) }
+        expectedChords.value = emptyList()
+        if (voices > 1) {
+            return blocks
+                .onEach { block -> recording?.audio(listOfNotNull(block.microphone, block.reference)) }
+                .detectedChords(
+                    audio.sampleRate, voices, settings.lowLimit..settings.highLimit, preferences.referenceAHz,
+                    chordParameters, learnedTemplates, expected = { expectedChords.value },
+                    onLevel = { microphoneLevel = it },
+                )
+                .onEach { recording?.detectedChord(it) }
+                .flowOn(Dispatchers.Default)
+                .filter { chord -> chord.ownSoundRemoved || ownSound?.acceptsChord(chord.notes) ?: true }
+                .map { chord -> chord.copy(notes = octaveMatch(chord.notes) ?: chord.notes) }
+                .flatMapConcat { chord -> chord.toNoteOns(voices).asFlow() }
+                .onEach { recording?.accepted(it) }
+        }
         return blocks
             .onEach { block -> recording?.audio(listOfNotNull(block.microphone, block.reference)) }
             .detectedNotes(audio.sampleRate, preferences.referenceAHz, onLevel = { microphoneLevel = it }, parameters = parameters)
@@ -391,9 +437,13 @@ class AppController(
             .flowOn(Dispatchers.Default)
             // Evaluated where the exercise runs, which is also where the gate sees the notes played.
             .filter { note -> note.midiNote in 0..127 && (note.ownSoundRemoved || ownSound?.accepts(note.toNoteOn()) ?: true) }
-            .map { it.toNoteOn() }
+            .map { note -> note.copy(midiNote = octaveMatch(listOf(note.midiNote))?.first() ?: note.midiNote).toNoteOn() }
             .onEach { recording?.accepted(it) }
     }
+
+    /** With octaves counting as correct: the given chord (or note) these notes are in another octave. */
+    private fun octaveMatch(notes: List<Int>): List<Int>? =
+        if (preferences.octavesCountAsCorrect) matchIgnoringOctaves(notes, expectedChords.value) else null
 
     /** Writes the header and the log of a recorded session; the audio has stopped by now. */
     private suspend fun finishRecording() {
@@ -468,6 +518,88 @@ class AppController(
                 .flowOn(Dispatchers.Default)
                 .collect()
         }
+    }
+
+    // ---------------------------------------------------------- piano calibration
+
+    /** The note to play now while calibrating; null when not calibrating. */
+    var calibrationTarget by mutableStateOf<Int?>(null)
+        private set
+    /** What the last stroke sounded like, if it was not the asked note. */
+    var calibrationHeard by mutableStateOf<List<Int>?>(null)
+        private set
+    var calibrationProgress by mutableStateOf(0 to 0)
+        private set
+    var calibrating by mutableStateOf(false)
+        private set
+    private var calibrationJob: Job? = null
+    private var calibrationPort: AudioInputPort? = null
+
+    /**
+     * Asks for each note of the current range in turn and learns its spectrum (headphones or not:
+     * the app plays nothing meanwhile); saved when all notes are done.
+     */
+    fun startCalibration() {
+        if (running || calibrating) return
+        stopMicTest()
+        val audio = runCatching { services.audio.open(preferences.audioInputDevice) }.getOrElse {
+            message = "Could not open the microphone: ${it.message}"
+            return
+        }
+        calibrationPort = audio
+        val notes = (settings.lowLimit..settings.highLimit).toList()
+        val calibration = PianoCalibration(
+            audio.sampleRate, notes, preferences.referenceAHz, preferences.chordParameters(2), learnedTemplates,
+        )
+        calibrating = true
+        calibrationTarget = calibration.target
+        calibrationHeard = null
+        calibrationProgress = 0 to calibration.total
+        calibrationJob = launchSafely {
+            try {
+                audio.blocks
+                    .map { block ->
+                        calibration.process(block)
+                        Triple(calibration.target, calibration.lastHeard, calibration.done)
+                    }
+                    .flowOn(Dispatchers.Default)
+                    .collect { (target, heard, done) ->
+                        microphoneLevel = calibration.level
+                        calibrationTarget = target
+                        calibrationHeard = heard
+                        calibrationProgress = done to calibration.total
+                        if (target == null) {
+                            learnedTemplates = calibration.result()
+                            repository.saveTemplates(learnedTemplates)
+                            message = "Piano calibrated: ${learnedTemplates.notes.size} notes."
+                            throw CancellationException("done")
+                        }
+                    }
+            } finally {
+                closeCalibration()
+            }
+        }
+    }
+
+    fun stopCalibration() {
+        calibrationJob?.cancel()
+        closeCalibration()
+    }
+
+    private fun closeCalibration() {
+        calibrating = false
+        calibrationJob = null
+        calibrationPort?.close()
+        calibrationPort = null
+        calibrationTarget = null
+        calibrationHeard = null
+        microphoneLevel = 0.0
+    }
+
+    /** Back to the piano model for the chord recognition. */
+    fun forgetCalibration() = launchSafely {
+        learnedTemplates = LearnedTemplates()
+        repository.saveTemplates(learnedTemplates)
     }
 
     // --------------------------------------------------------------- MIDI test
@@ -571,10 +703,13 @@ class AppController(
 
     fun setInputSource(source: InputSource) = updatePreferences { it.copy(inputSource = source) }
     fun setUsesHeadphones(uses: Boolean) = updatePreferences { it.copy(usesHeadphones = uses) }
+    fun setOctavesCountAsCorrect(on: Boolean) = updatePreferences { it.copy(octavesCountAsCorrect = on) }
     fun setOptimizationMode(on: Boolean) = updatePreferences { it.copy(optimizationMode = on) }
     fun setOptimizationSteps(steps: Int) =
         updatePreferences { it.copy(optimizationSteps = steps.coerceIn(OPTIMIZATION_STEP_RANGE)) }
     fun setDetectionParameters(parameters: DetectionParameters) = updatePreferences { it.copy(detectionParameters = parameters) }
+    fun setChordDetectionParameters(voices: Int, parameters: ChordDetectionParameters) =
+        updatePreferences { it.copy(chordDetectionParameters = it.chordDetectionParameters + (voices to parameters)) }
     fun setRecordMicrophone(record: Boolean) = updatePreferences { it.copy(recordMicrophone = record) }
     val recordingsLocation: String? get() = services.recordings?.location
     fun setLateAnswerTolerance(millis: Int) =
@@ -659,6 +794,8 @@ class AppController(
         private const val AUTOSAVE_DELAY_MILLIS = 800L
     }
 }
+
+private const val EXPECTED_CHORDS = 3
 
 /** What a run in optimization mode recorded, step by step. */
 class RunSummary(val recording: String, val steps: List<StepSummary>)

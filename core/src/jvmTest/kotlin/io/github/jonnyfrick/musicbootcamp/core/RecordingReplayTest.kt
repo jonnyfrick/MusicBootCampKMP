@@ -8,9 +8,11 @@ import io.github.jonnyfrick.musicbootcamp.core.audio.WavAudio
 import io.github.jonnyfrick.musicbootcamp.core.midi.NoteNames
 import io.github.jonnyfrick.musicbootcamp.core.midi.Tuning
 import io.github.jonnyfrick.musicbootcamp.core.persistence.SetupRepository
-import io.github.jonnyfrick.musicbootcamp.core.pitch.DetectedNote
+import io.github.jonnyfrick.musicbootcamp.core.pitch.ChordDetectionParameters
+import io.github.jonnyfrick.musicbootcamp.core.pitch.ChordTracker
 import io.github.jonnyfrick.musicbootcamp.core.pitch.DetectionParameters
 import io.github.jonnyfrick.musicbootcamp.core.pitch.HopTrace
+import io.github.jonnyfrick.musicbootcamp.core.pitch.LearnedTemplates
 import io.github.jonnyfrick.musicbootcamp.core.pitch.NoteTracker
 import io.github.jonnyfrick.musicbootcamp.core.pitch.fft
 import io.github.jonnyfrick.musicbootcamp.core.pitch.toJson
@@ -36,7 +38,7 @@ import kotlin.test.assertTrue
  * Analyses recorded sessions (Preferences → "Record exercises" or optimization mode): replays them
  * through the pitch detection with the parameters they were recorded with and writes, per recording,
  * to `core/build/analysis/<name>/`:
- * - `steps.txt`: per step the given note, what the player played, what was recognised live and
+ * - `steps.txt`: per step the given note(s), what the player played, what was recognised live and
  *   now, and each mistake classified (missed, wrong note, octave, own sound, extra);
  * - `hops.csv`: every hop's levels, the predicted own sound, onset decisions, pitch and clarity;
  * - `spectrogram.png`: microphone, reference and predicted own sound, with steps and notes marked,
@@ -47,6 +49,9 @@ import kotlin.test.assertTrue
  *     [-Pmusicbootcamp.played=4=62,9=-]        what was played where it was not the given note ("-" = nothing)
  *     [-Pmusicbootcamp.parameters={"rawRise":1.3}]  parameters to change for the replay
  *     [-Pmusicbootcamp.sweep=true]             also try a grid of parameters and rank them
+ *     [-Pmusicbootcamp.templates=<piano-templates.json>]  the piano calibration (chords)
+ *     [-Pmusicbootcamp.voices=1]               use the chord recognition (with this many voices)
+ *     [-Pmusicbootcamp.learnTemplates=<file>]  with voices=1: learn piano templates from the strokes
  * ```
  */
 class RecordingReplayTest {
@@ -56,7 +61,12 @@ class RecordingReplayTest {
         assumeTrue("No recordings given (-Pmusicbootcamp.recordings=…)", path != null)
         val root = File(path!!)
         val files = if (root.isDirectory) root.listFiles { f -> f.name.endsWith(".wav") }!!.sorted() else listOf(root)
-        files.forEach { println(Analysis(it).run()) }
+        val learning = TemplateLearning()
+        files.forEach { println(Analysis(it, learning = learning).run()) }
+        System.getProperty("musicbootcamp.learnTemplates")?.let { target ->
+            File(target).writeText(SetupRepository.json.encodeToString(learning.result()))
+            println("templates for ${learning.result().notes.keys.sorted()} written to $target")
+        }
     }
 
     @Test
@@ -88,14 +98,77 @@ class RecordingReplayTest {
         assertTrue(File(directory, "out/hops.csv").readLines().size > 200)
         assertTrue(ImageIO.read(File(directory, "out/spectrogram.png")).width > 200)
     }
+
+    @Test
+    fun chordRecordingsAreAnalysedByChord() {
+        // Two app chords 2.5 s apart; the player answers the first one after it has ended.
+        val sampleRate = 44_100
+        val reference = FloatArray(5 * sampleRate)
+        for ((start, notes) in listOf(0.0 to listOf(48, 55), 2.5 to listOf(50, 57))) {
+            notes.forEach { addPianoStroke(reference, it, startSeconds = start, durationSeconds = 1.25) }
+        }
+        val microphone = FloatArray(reference.size) { reference[it] * 0.3f }
+        listOf(48, 55).forEach { addPianoStroke(microphone, it, startSeconds = 1.6, durationSeconds = 0.8) }
+        val directory = File("build/analysis-test-chords").apply { deleteRecursively(); mkdirs() }
+        val wav = File(directory, "chords.wav")
+        wav.writeBytes(Wav.header(sampleRate, 2, reference.size * 4L) + Wav.pcm16(listOf(microphone, reference)))
+        val log = RecordingLog(
+            sampleRate = sampleRate,
+            channels = listOf("microphone", "reference"),
+            info = mapOf("breathingTime" to "2.5", "voices" to "2", "range" to "48..72"),
+            events = listOf(0.0 to listOf(48, 55), 2.5 to listOf(50, 57)).flatMap { (start, notes) ->
+                val on = (start * sampleRate).toLong()
+                val off = ((start + 1.25) * sampleRate).toLong()
+                listOf(RecordingEvent(on, RecordingEventType.STEP, notes), RecordingEvent(on, RecordingEventType.APP_NOTE_ON, notes)) +
+                    notes.map { RecordingEvent(off, RecordingEventType.APP_NOTE_OFF, listOf(it)) }
+            }.sortedBy { it.sample },
+        )
+        File(directory, "chords.json").writeText(SetupRepository.json.encodeToString(log))
+
+        val report = Analysis(wav, output = File(directory, "out")).run()
+        // The app's own chords are ignored (as by OwnSoundGate): only the answer at 1.6 s counts.
+        assertTrue("voices: 2" in report && "HIT 1  MISSED 1  WRONG_NOTE 0  OCTAVE 0  OWN_SOUND 0  EXTRA 0" in report, report)
+        assertTrue(File(directory, "out/spectrogram.png").isFile)
+    }
 }
 
-/** What the player played in one step and when their answer counts. */
-private class Expectation(val step: Int, val given: Int, val played: Int?, val from: Long, val until: Long)
+/** What the player played in one step (distinct notes, lowest first; null = nothing) and when their answer counts. */
+private class Expectation(val step: Int, val given: List<Int>, val played: List<Int>?, val from: Long, val until: Long)
+
+/** A note or chord recognised in the replay. */
+private class Detection(
+    val sampleTime: Long,
+    val notes: List<Int>,
+    val ownSoundRemoved: Boolean,
+    val detail: String,
+    /** When the app gets it (after the analysis window for chords), which is when its gate decides. */
+    val decidedAt: Long = sampleTime,
+    /** The spectrum the chord recognition decided on (log axis). */
+    val spectrum: DoubleArray? = null,
+)
+
+/**
+ * `-Pmusicbootcamp.learnTemplates=<file>`: learns the piano's note templates from single-note
+ * recordings analysed with the chord recognition (`voices=1`): the spectrum of every stroke that
+ * answered a step, labelled with the note that was played there (so octave errors teach too).
+ */
+private class TemplateLearning {
+    private val sums = mutableMapOf<Int, DoubleArray>()
+    private val counts = mutableMapOf<Int, Int>()
+
+    fun add(note: Int, spectrum: DoubleArray) {
+        val length = kotlin.math.sqrt(spectrum.sumOf { it * it }).takeIf { it > 0 } ?: return
+        val sum = sums.getOrPut(note) { DoubleArray(spectrum.size) }
+        for (i in spectrum.indices) sum[i] += spectrum[i] / length
+        counts[note] = (counts[note] ?: 0) + 1
+    }
+
+    fun result() = LearnedTemplates(notes = sums.mapValues { (note, sum) -> sum.map { it / counts.getValue(note) } })
+}
 
 private enum class Outcome { HIT, MISSED, WRONG_NOTE, OCTAVE, OWN_SOUND, EXTRA }
 
-private class Analysis(private val wavFile: File, output: File? = null) {
+private class Analysis(private val wavFile: File, output: File? = null, private val learning: TemplateLearning? = null) {
     private val name = wavFile.name.removeSuffix(".wav")
     private val output = output ?: File("build/analysis/$name")
     private val audio: WavAudio = Wav.read(wavFile.readBytes())
@@ -118,14 +191,33 @@ private class Analysis(private val wavFile: File, output: File? = null) {
         return SetupRepository.json.decodeFromJsonElement(DetectionParameters.serializer(), JsonObject(recorded + changes))
     }
 
+    // `-Pmusicbootcamp.voices=2` analyses with the chord recognition (also a single-note recording, as a check).
+    private val forcedVoices = System.getProperty("musicbootcamp.voices")?.toIntOrNull()
+    private val voices = forcedVoices ?: log?.info?.get("voices")?.toIntOrNull() ?: 1
+    private val chordPath = voices > 1 || forcedVoices != null
+    private val range = log?.info?.get("range")?.split("..")?.let { it[0].toInt()..it[1].toInt() } ?: 48..72
+    private val chordParameters = chordParameters(System.getProperty("musicbootcamp.parameters"))
+
+    /** Like [parameters], for recordings with several voices. */
+    private fun chordParameters(overrides: String?): ChordDetectionParameters {
+        val recorded = log?.info?.get("chordDetectionParameters")?.let { SetupRepository.json.parseToJsonElement(it).jsonObject } ?: JsonObject(emptyMap())
+        val changes = overrides?.let { SetupRepository.json.parseToJsonElement(it).jsonObject } ?: JsonObject(emptyMap())
+        return SetupRepository.json.decodeFromJsonElement(ChordDetectionParameters.serializer(), JsonObject(recorded + changes))
+    }
+
+    /** `-Pmusicbootcamp.templates=<piano-templates.json>`: the calibration to use for chords. */
+    private val templates = System.getProperty("musicbootcamp.templates")?.let { File(it) }?.takeIf { it.isFile }
+        ?.let { SetupRepository.json.decodeFromString<LearnedTemplates>(it.readText()) } ?: LearnedTemplates()
+
     private val expectations: List<Expectation> by lazy {
+        // "4=62,9=-" (single notes) or "4=60+67" (chords): what was played where it was not the given.
         val played = System.getProperty("musicbootcamp.played").orEmpty().split(',').filter { '=' in it }.associate {
-            val (step, note) = it.split('=')
-            step.trim().toInt() to note.trim().toIntOrNull()
+            val (step, notes) = it.split('=')
+            step.trim().toInt() to notes.split('+').mapNotNull { n -> n.trim().toIntOrNull() }.distinct().sorted().ifEmpty { null }
         }
         steps.mapIndexed { index, step ->
             val next = steps.getOrNull(index + 1)?.sample ?: (step.sample + stepSamples)
-            val given = step.notes.first()
+            val given = step.notes.distinct().sorted()
             Expectation(index + 1, given, if (index + 1 in played) played[index + 1] else given, step.sample, next + toleranceSamples.toLong())
         }
     }
@@ -134,17 +226,26 @@ private class Analysis(private val wavFile: File, output: File? = null) {
         output.mkdirs()
         val traces = mutableListOf<HopTrace>()
         val ownSound = mutableListOf<FloatArray>() // per hop, in spectrogram bins
-        val detected = replay(parameters) { trace ->
+        val detected = replay { trace ->
             traces += trace
             ownSound += trace.ownSoundPower?.let { bins(it, it.size) } ?: FloatArray(BINS)
         }
         writeCsv(traces)
+        if (learning != null && voices == 1) {
+            val (matched, _) = score(detected)
+            for ((step, result) in matched) {
+                val (outcome, detection) = result
+                val played = expectations.first { it.step == step }.played?.singleOrNull() ?: continue
+                if (outcome in setOf(Outcome.HIT, Outcome.OCTAVE)) detection?.spectrum?.let { learning.add(played, it) }
+            }
+        }
         val table = stepTable(detected)
         File(output, "steps.txt").writeText(table)
         drawSpectrogram(traces, ownSound, detected)
 
         return buildString {
-            appendLine("== $name: ${microphone.size / sampleRate} s, reference: ${reference != null}, parameters: ${parameters.toJson()}")
+            appendLine("== $name: ${microphone.size / sampleRate} s, voices: $voices, reference: ${reference != null}, templates: ${templates.notes.size}")
+            appendLine("   parameters: ${if (!chordPath) parameters.toJson() else chordParameters.toJson()}")
             append(table)
             appendLine("   written to ${output.absolutePath}")
             if (System.getProperty("musicbootcamp.sweep") == "true") append(sweep())
@@ -152,13 +253,47 @@ private class Analysis(private val wavFile: File, output: File? = null) {
     }
 
     /** Replays the recording as the app would: detection, then the own-sound gate where the app's sound was not removed. */
-    private fun replay(parameters: DetectionParameters, trace: ((HopTrace) -> Unit)? = null): List<DetectedNote> {
-        val tracker = NoteTracker(sampleRate, referenceA, parameters)
-        tracker.trace = trace
-        return (microphone.indices step BLOCK).flatMap { start ->
+    private fun replay(
+        parameters: DetectionParameters = this.parameters,
+        chordParameters: ChordDetectionParameters = this.chordParameters,
+        trace: ((HopTrace) -> Unit)? = null,
+    ): List<Detection> {
+        val detections = if (!chordPath) {
+            val tracker = NoteTracker(sampleRate, referenceA, parameters)
+            tracker.trace = trace
+            blocks { mic, ref -> tracker.process(mic, ref) }
+                .map { Detection(it.sampleTime, listOf(it.midiNote), it.ownSoundRemoved, "${it.cents.roundToInt()}ct") }
+        } else {
+            var now = 0L
+            // As the app: the chords given lately are the expected ones.
+            val tracker = ChordTracker(sampleRate, voices, range, referenceA, chordParameters, templates) {
+                steps.filter { it.sample <= now }.takeLast(3).map { it.notes }
+            }
+            tracker.trace = trace
+            val spectra = mutableMapOf<Long, DoubleArray>()
+            tracker.spectrumTrace = { time, spectrum -> spectra[time] = spectrum }
+            blocks { mic, ref -> tracker.process(mic, ref).also { now += mic.size } }.map {
+                val alternative = it.details.alternative?.joinToString("+") { note -> n(note) }
+                Detection(
+                    it.onsetTime, it.notes, it.ownSoundRemoved,
+                    "%.3f (%s %.3f)".format(Locale.ROOT, it.details.score, alternative, it.details.alternativeScore ?: 0.0), it.sampleTime,
+                    spectra[it.sampleTime],
+                )
+            }
+        }
+        // The own-sound gate ignores what could all be the app's own notes.
+        return detections.filter { d -> d.ownSoundRemoved || usesHeadphones || !d.notes.all { appSounding(it, d.decidedAt) } }
+    }
+
+    private fun <T> blocks(process: (FloatArray, FloatArray?) -> List<T>): List<T> {
+        val result = mutableListOf<T>()
+        var start = 0
+        while (start < microphone.size) {
             val end = minOf(start + BLOCK, microphone.size)
-            tracker.process(microphone.copyOfRange(start, end), reference?.copyOfRange(start, end))
-        }.filter { it.ownSoundRemoved || !usesHeadphones && !appSounding(it.midiNote, it.sampleTime) }
+            result += process(microphone.copyOfRange(start, end), reference?.copyOfRange(start, end))
+            start = end
+        }
+        return result
     }
 
     private val usesHeadphones = log?.info?.get("usesHeadphones") == "true"
@@ -183,62 +318,91 @@ private class Analysis(private val wavFile: File, output: File? = null) {
     }
 
     /** Assigns detections to the steps they answer; everything else is a mistake of the recognition. */
-    private fun score(detected: List<DetectedNote>): Pair<Map<Int, Pair<Outcome, DetectedNote?>>, List<Pair<Outcome, DetectedNote>>> {
-        val matched = mutableMapOf<Int, Pair<Outcome, DetectedNote?>>()
-        val extra = mutableListOf<Pair<Outcome, DetectedNote>>()
-        for (note in detected) {
-            val open = expectations.filter { note.sampleTime in it.from..it.until && it.step !in matched && it.played != null }
-            val hit = open.firstOrNull { it.played == note.midiNote }
+    private fun score(detected: List<Detection>): Pair<Map<Int, Pair<Outcome, Detection?>>, List<Pair<Outcome, Detection>>> {
+        val matched = mutableMapOf<Int, Pair<Outcome, Detection?>>()
+        val extra = mutableListOf<Pair<Outcome, Detection>>()
+        for (detection in detected) {
+            val notes = detection.notes.distinct().sorted()
+            val open = expectations.filter { detection.sampleTime in it.from..it.until && it.step !in matched && it.played != null }
+            val hit = open.firstOrNull { it.played == notes }
             val candidate = open.firstOrNull()
             when {
-                hit != null -> matched[hit.step] = Outcome.HIT to note
-                candidate != null && candidate.played != null && (note.midiNote - candidate.played) % 12 == 0 ->
-                    matched[candidate.step] = Outcome.OCTAVE to note
-                // The app's own current or previous note, heard as played.
-                appNotesAround(note.sampleTime).contains(note.midiNote) -> extra += Outcome.OWN_SOUND to note
-                candidate != null -> matched[candidate.step] = Outcome.WRONG_NOTE to note
-                else -> extra += Outcome.EXTRA to note
+                hit != null -> matched[hit.step] = Outcome.HIT to detection
+                candidate?.played != null && octaves(notes, candidate.played) -> matched[candidate.step] = Outcome.OCTAVE to detection
+                // The app's own current or previous notes, heard as played.
+                appNotesAround(detection.sampleTime).containsAll(notes) -> extra += Outcome.OWN_SOUND to detection
+                candidate != null -> matched[candidate.step] = Outcome.WRONG_NOTE to detection
+                else -> extra += Outcome.EXTRA to detection
             }
         }
         expectations.filter { it.played != null && it.step !in matched }.forEach { matched[it.step] = Outcome.MISSED to null }
         return matched to extra
     }
 
+    /** The same notes up to octaves (the classic pitch detection error). */
+    private fun octaves(a: List<Int>, b: List<Int>) =
+        a.size == b.size && a.zip(b).all { (x, y) -> (x - y) % 12 == 0 } && a != b
+
     private fun appNotesAround(sample: Long): Set<Int> {
         val window = stepSamples + sampleRate / 2
         return steps.filter { sample - it.sample in 0..window }.flatMap { it.notes }.toSet()
     }
 
-    private fun stepTable(detected: List<DetectedNote>): String {
+    private fun chord(notes: List<Int>) = notes.joinToString("+") { n(it) }
+
+    private fun stepTable(detected: List<Detection>): String {
         val (matched, extra) = score(detected)
         val live = events.filter { it.type == RecordingEventType.DETECTED }
         val evaluations = events.filter { it.type == RecordingEventType.EVALUATION }
         return buildString {
-            appendLine(" step  time    given played | live heard       | replay                 | result")
+            appendLine(" step  time    given        played       | live heard               | replay                          | result")
             for (expectation in expectations) {
                 val liveHeard = live.filter { it.sample in expectation.from..expectation.until }
-                    .joinToString(" ") { "${n(it.notes.single())}@${ms(it.sample - expectation.from)}" }
-                val (outcome, note) = matched[expectation.step] ?: (null to null)
+                    .joinToString(" ") { "${chord(it.notes)}@${ms(it.sample - expectation.from)}" }
+                val (outcome, detection) = matched[expectation.step] ?: (null to null)
                 val evaluation = evaluations.getOrNull(expectation.step - 1)?.correct?.let { if (it) "live ✓" else "live ✗" } ?: ""
                 appendLine(
                     String.format(
-                        Locale.ROOT, "%5d %6.2fs  %-5s %-6s | %-16s | %-22s | %s %s",
-                        expectation.step, expectation.from.toDouble() / sampleRate, n(expectation.given),
-                        expectation.played?.let(::n) ?: "-", liveHeard,
-                        note?.let { "${n(it.midiNote)}@${ms(it.sampleTime - expectation.from)} ${it.cents.roundToInt()}ct" } ?: "",
+                        Locale.ROOT, "%5d %6.2fs  %-12s %-12s | %-24s | %-31s | %s %s",
+                        expectation.step, expectation.from.toDouble() / sampleRate, chord(expectation.given),
+                        expectation.played?.let(::chord) ?: "-", liveHeard,
+                        detection?.let { "${chord(it.notes)}@${ms(it.sampleTime - expectation.from)} ${it.detail}" } ?: "",
                         outcome ?: "", evaluation,
                     ),
                 )
             }
-            extra.forEach { (outcome, note) ->
-                appendLine(String.format(Locale.ROOT, "      %6.2fs  %s %s", note.sampleTime.toDouble() / sampleRate, outcome, n(note.midiNote)))
+            extra.forEach { (outcome, detection) ->
+                appendLine(String.format(Locale.ROOT, "      %6.2fs  %s %s %s", detection.sampleTime.toDouble() / sampleRate, outcome, chord(detection.notes), detection.detail))
             }
             val counts = matched.values.groupingBy { it.first }.eachCount() + extra.groupingBy { it.first }.eachCount()
             appendLine("   " + Outcome.entries.joinToString("  ") { "$it ${counts[it] ?: 0}" })
         }
     }
 
-    private fun sweep(): String {
+    private fun sweep(): String = if (!chordPath) sweepNotes() else sweepChords()
+
+    private fun sweepChords(): String {
+        val base = chordParameters
+        val variants = buildList {
+            for (penalty in listOf(0.0, 0.01, 0.02, 0.04))
+                for (share in listOf(0.03, 0.06, 0.12))
+                    for (background in listOf(0.5, 1.0, 1.5))
+                        for (end in listOf(250, 300, 400))
+                            add(base.copy(notePenalty = penalty, minNoteShare = share, backgroundWeight = background, windowEndMillis = end))
+        }
+        val ranked = variants.map { variant ->
+            val (matched, extra) = score(replay(chordParameters = variant))
+            Triple(variant, matched.values.count { it.first == Outcome.HIT }, matched.values.count { it.first != Outcome.HIT } + extra.size)
+        }.sortedWith(compareBy({ it.third - it.second }, { it.third }))
+        return buildString {
+            appendLine("   sweep (${variants.size} variants, best first): hits / recognition errors")
+            ranked.take(12).forEach { (p, hits, errors) ->
+                appendLine("   $hits / $errors  notePenalty=${p.notePenalty} minNoteShare=${p.minNoteShare} backgroundWeight=${p.backgroundWeight} windowEndMillis=${p.windowEndMillis}")
+            }
+        }
+    }
+
+    private fun sweepNotes(): String {
         val base = parameters
         val variants = buildList {
             for (rawRise in listOf(1.2, 1.35, 1.5, 1.8))
@@ -248,7 +412,7 @@ private class Analysis(private val wavFile: File, output: File? = null) {
                             add(base.copy(rawRise = rawRise, ownSoundShare = share, overSubtraction = over, minClarity = clarity))
         }
         val ranked = variants.map { variant ->
-            val (matched, extra) = score(replay(variant))
+            val (matched, extra) = score(replay(parameters = variant))
             val hits = matched.values.count { it.first == Outcome.HIT }
             val errors = matched.values.count { it.first != Outcome.HIT } + extra.size
             Triple(variant, hits, errors)
@@ -310,7 +474,7 @@ private class Analysis(private val wavFile: File, output: File? = null) {
         }
     }
 
-    private fun drawSpectrogram(traces: List<HopTrace>, ownSound: List<FloatArray>, detected: List<DetectedNote>) {
+    private fun drawSpectrogram(traces: List<HopTrace>, ownSound: List<FloatArray>, detected: List<Detection>) {
         val hops = traces.size
         val panels = listOfNotNull(
             "microphone" to stft(microphone, hops),
@@ -362,15 +526,15 @@ private class Analysis(private val wavFile: File, output: File? = null) {
             }
             events.filter { it.type == RecordingEventType.APP_NOTE_ON }.forEach {
                 g.color = Color.GREEN
-                g.drawLine(xOf(it.sample), yOf(frequency(it.notes.single()), top), xOf(it.sample) + 40, yOf(frequency(it.notes.single()), top))
+                for (note in it.notes) g.drawLine(xOf(it.sample), yOf(frequency(note), top), xOf(it.sample) + 40, yOf(frequency(note), top))
             }
             events.filter { it.type == RecordingEventType.DETECTED }.forEach {
                 g.color = Color.YELLOW
-                g.drawOval(xOf(it.sample) - 4, yOf(frequency(it.notes.single()), top) - 4, 8, 8)
+                for (note in it.notes) g.drawOval(xOf(it.sample) - 4, yOf(frequency(note), top) - 4, 8, 8)
             }
             detected.forEach {
                 g.color = Color.RED
-                g.fillOval(xOf(it.sampleTime) - 3, yOf(frequency(it.midiNote), top) - 3, 6, 6)
+                for (note in it.notes) g.fillOval(xOf(it.sampleTime) - 3, yOf(frequency(note), top) - 3, 6, 6)
             }
         }
 

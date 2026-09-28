@@ -215,7 +215,7 @@ messages, so the exercise logic is the same as with a MIDI keyboard.
   ignored then, which left too little time at fast tempos: at 1 s breathing time and 50 % sustain
   only the last 300 ms of a step.) A correct answer played while the same note still sounds is
   still ignored; subtracting the app's own sound from the microphone signal is planned.
-- Late answers: see "Deliberate changes". The tolerance (Preferences → "Late answers", 0–500 ms,
+- Late answers: see "Deliberate changes". The tolerance (Preferences → "Late answers", 0–1000 ms,
   default 150 ms, `lateAnswerToleranceMillis` in `preferences.json`) counts from the key stroke:
   `NoteTracker.detectionDelay` (about 58 ms) is added, because the note reaches the exercise only
   once it is recognised. Audio buffering (one 11.6 ms block on the desktop) is not added.

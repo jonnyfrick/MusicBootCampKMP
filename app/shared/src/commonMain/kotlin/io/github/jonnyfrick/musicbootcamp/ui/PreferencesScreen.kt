@@ -115,9 +115,8 @@ private fun MicrophoneSettings(controller: AppController) {
         } else {
             "Without headphones the microphone hears the app too. With \"Gervill\" as MIDI Out the app removes its " +
                 "own sound, so every note counts, also the one it plays (it needs a few notes at the start of an " +
-                "exercise to learn your room; until then only notes clearly louder than the app count). With other " +
-                "outputs, while " +
-                "the app plays a note, that note and its octaves are ignored."
+                "exercise to learn your room; until then, as with other outputs, the note the app is playing and " +
+                "its octaves are ignored while it sounds)."
         },
     )
     Row(verticalAlignment = Alignment.CenterVertically) {

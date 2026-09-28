@@ -151,12 +151,34 @@ private class Analysis(private val wavFile: File, output: File? = null) {
         }
     }
 
+    /** Replays the recording as the app would: detection, then the own-sound gate where the app's sound was not removed. */
     private fun replay(parameters: DetectionParameters, trace: ((HopTrace) -> Unit)? = null): List<DetectedNote> {
         val tracker = NoteTracker(sampleRate, referenceA, parameters)
         tracker.trace = trace
         return (microphone.indices step BLOCK).flatMap { start ->
             val end = minOf(start + BLOCK, microphone.size)
             tracker.process(microphone.copyOfRange(start, end), reference?.copyOfRange(start, end))
+        }.filter { it.ownSoundRemoved || !usesHeadphones && !appSounding(it.midiNote, it.sampleTime) }
+    }
+
+    private val usesHeadphones = log?.info?.get("usesHeadphones") == "true"
+
+    /** Like OwnSoundGate: the app sounds the note (or an octave of it), or released it within 200 ms. */
+    private fun appSounding(note: Int, sample: Long): Boolean {
+        val release = sampleRate / 5
+        val lastOn = mutableMapOf<Int, Long>()
+        val lastOff = mutableMapOf<Int, Long>()
+        for (event in events) {
+            if (event.sample > sample) break
+            when (event.type) {
+                RecordingEventType.APP_NOTE_ON -> event.notes.forEach { lastOn[it] = event.sample; lastOff.remove(it) }
+                // Only the first note-off ends the note (the app sends another one at the next step).
+                RecordingEventType.APP_NOTE_OFF -> event.notes.forEach { if (it in lastOn && it !in lastOff) lastOff[it] = event.sample }
+                else -> Unit
+            }
+        }
+        return lastOn.keys.any { own ->
+            (note - own) % 12 == 0 && (lastOff[own]?.let { sample - it < release } ?: true)
         }
     }
 

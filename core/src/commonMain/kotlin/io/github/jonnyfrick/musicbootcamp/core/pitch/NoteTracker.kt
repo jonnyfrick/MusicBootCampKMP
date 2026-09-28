@@ -4,7 +4,9 @@ import io.github.jonnyfrick.musicbootcamp.core.midi.MidiMessage
 import io.github.jonnyfrick.musicbootcamp.core.midi.Tuning
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlin.jvm.JvmName
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
@@ -19,6 +21,11 @@ data class DetectedNote(
     val cents: Double,
     /** Position in the stream (samples since the tracker started) where the note was confirmed. */
     val sampleTime: Long,
+    /**
+     * Whether the app's own sound was being removed; if not, and the app was playing, the note
+     * may be the app's own (callers then ignore the app's current note, see OwnSoundGate).
+     */
+    val ownSoundRemoved: Boolean = false,
 )
 
 /** What [NoteTracker] saw and decided in one hop (for analysing recordings). */
@@ -88,6 +95,7 @@ class NoteTracker(
     private val recentRawLevels = ArrayDeque<Double>()
     private var hopsSinceOnset = -1 // -1: no stroke being analysed
     private var hopsSinceStroke = Int.MAX_VALUE / 2
+    private var hopsSinceNote = Int.MAX_VALUE / 2
     private var candidate: Int? = null
     private var candidateCount = 0
     private val candidateFrequencies = mutableListOf<Double>()
@@ -116,7 +124,10 @@ class NoteTracker(
         if (reference != null && parameters.echoCancellation) {
             require(reference.size == samples.size) { "Reference and microphone blocks differ in length" }
             if (echo == null) {
-                echo = EchoEstimator(sampleRate, windowSize, detector.paddedSize, hop, parameters.overSubtraction, parameters.reverbDecay)
+                echo = EchoEstimator(
+                    sampleRate, windowSize, detector.paddedSize, hop,
+                    parameters.overSubtraction, parameters.reverbDecay, parameters.gainQuantile,
+                )
             }
         }
         val notes = mutableListOf<DetectedNote>()
@@ -159,12 +170,15 @@ class NoteTracker(
         for (sample in hopBuffer) sum += sample * sample
         level = sqrt(sum / hop)
 
-        val echo = echo?.apply { update(hopBuffer, referenceHop, playerActive = hopsSinceStroke < PLAYER_ACTIVE_HOPS) }
+        // Before the app's sound is removed, onsets include the app's own; only after that do they
+        // mean the player is active (the estimator detects the player's strokes itself too).
+        val echo = echo?.apply { update(hopBuffer, referenceHop, playerActive = ready && hopsSinceStroke < PLAYER_ACTIVE_HOPS) }
         hopsSinceStroke++
+        hopsSinceNote++
         // Without a ready prediction of the app's sound, only strokes well above it count.
         // Blocking only prevents new strokes; one already being analysed goes on.
         // Right after the app starts a note its attack may be louder still, so the margin doubles there.
-        val blocked = echo != null && !echo.ready && echo.referenceActive && (
+        val blocked = echo != null && !echo.ready && echo.referenceActive && parameters.fallbackMargin > 0 && (
             !echo.levelKnown ||
                 level < parameters.fallbackMargin * echo.levelWhileReference * (if (echo.referenceOnsetRecent) 2 else 1)
             )
@@ -177,7 +191,10 @@ class NoteTracker(
         val previous = maxOf(recentLevels.minOrNull() ?: 0.0, ownLevel)
         // What remains of the app's sound fluctuates (e.g. beating with a ringing note); a real
         // stroke also raises the total level above the last hops.
-        val louder = !ownSoundRemoved || level > parameters.rawRise * (recentRawLevels.minOrNull() ?: 0.0)
+        // Shortly after a note, what remains of it and the app's sound can beat; a new stroke then
+        // has to raise the total level clearly.
+        val rise = if (echo != null && hopsSinceNote < FOLLOW_UP_HOPS) parameters.followUpRise else parameters.rawRise
+        val louder = (!ownSoundRemoved && rise == parameters.rawRise) || level > rise * (recentRawLevels.minOrNull() ?: 0.0)
         val onset = !blocked && louder && strokeLevel >= noiseGate && strokeLevel > onsetRatio * previous &&
             hopsSinceStroke >= REFRACTORY_HOPS
         tracedStroke = strokeLevel
@@ -228,9 +245,10 @@ class NoteTracker(
         if (candidateCount < confirmFrames) return null
 
         hopsSinceOnset = -1 // one note per stroke
+        hopsSinceNote = 0
         val frequency = candidateFrequencies.takeLast(confirmFrames).average()
         val exact = frequencyToMidi(frequency, referenceAHz)
-        return DetectedNote(note, frequency, (exact - note) * 100, samplesSeen)
+        return DetectedNote(note, frequency, (exact - note) * 100, samplesSeen, ownSoundRemoved)
     }
 
     private fun resetCandidate() {
@@ -242,6 +260,7 @@ class NoteTracker(
     private companion object {
         const val LEVEL_HISTORY = 3
         const val REFRACTORY_HOPS = 6
+        const val FOLLOW_UP_HOPS = 34 // ~400 ms
         const val SETTLE_HOPS = 3
         const val GIVE_UP_HOPS = 16
         const val PLAYER_ACTIVE_HOPS = 43 // ~0.5 s
@@ -265,17 +284,28 @@ fun Flow<AudioBlock>.detectNotes(
     onNote: (DetectedNote) -> Unit = {},
     onLevel: (Double) -> Unit = {},
     parameters: DetectionParameters = DetectionParameters(),
-): Flow<MidiMessage> = flow {
+): Flow<MidiMessage> = detectedNotes(sampleRate, referenceAHz, onLevel, parameters)
+    .onEach(onNote)
+    .filter { it.midiNote in 0..127 }
+    .map { it.toNoteOn() }
+
+/** The recognised notes themselves (with what the tracker knew), for callers that filter them. */
+fun Flow<AudioBlock>.detectedNotes(
+    sampleRate: Int,
+    referenceAHz: Double,
+    onLevel: (Double) -> Unit = {},
+    parameters: DetectionParameters = DetectionParameters(),
+): Flow<DetectedNote> = flow {
     val tracker = NoteTracker(sampleRate, referenceAHz, parameters)
     collect { block ->
         val notes = tracker.process(block.microphone, block.reference)
         onLevel(tracker.level)
-        for (note in notes) {
-            onNote(note)
-            if (note.midiNote in 0..127) emit(MidiMessage.noteOn(note.midiNote, DETECTED_VELOCITY))
-        }
+        notes.forEach { emit(it) }
     }
 }
+
+/** A recognised note as the note-on a MIDI keyboard would send. */
+fun DetectedNote.toNoteOn(): MidiMessage = MidiMessage.noteOn(midiNote, DETECTED_VELOCITY)
 
 private const val DETECTED_VELOCITY = 100
 

@@ -55,6 +55,9 @@ private val parameterSliders = listOf(
     ParameterSlider("Fallback margin", "Until the own sound is learned (or if it is too quiet to learn), strokes must be " +
         "this many times louder than the microphone while the app plays.", 1.0..6.0, 0.25,
         { it.fallbackMargin }, { p, v -> p.copy(fallbackMargin = v) }),
+    ParameterSlider("Follow-up rise", "Within 400 ms after a recognised note, a new stroke over the app's sound must " +
+        "raise the level by this factor (against beating).", 1.0..5.0, 0.25,
+        { it.followUpRise }, { p, v -> p.copy(followUpRise = v) }),
 )
 
 /** Preferences → Microphone: runs of a fixed length, always recorded, with the detection parameters editable. */

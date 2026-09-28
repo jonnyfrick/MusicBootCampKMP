@@ -34,6 +34,8 @@ internal class EchoEstimator(
     private val hop: Int,
     private val overSubtraction: Double = 2.0,
     private val reverbDecay: Double = 0.6,
+    /** The quantile of microphone/reference the gains follow; lower is safer against the player's notes. */
+    private val gainQuantile: Double = 0.5,
 ) {
     private val bandCount = bandOf(sampleRate / 2.0) + 1
     private val paddedBands = IntArray(paddedSize) { bandOf(min(it, paddedSize - it) * sampleRate.toDouble() / paddedSize) }
@@ -190,12 +192,12 @@ internal class EchoEstimator(
             if (ref < loudest * ACTIVE_BAND || ref < quiet) continue
             micSum += micBands[band]
             refSum += ref
-            val step = quantileStep(ln((micBands[band] + TINY) / ref), logGain[band], gainUpdates[band])
+            val step = quantileStep(ln((micBands[band] + TINY) / ref), logGain[band], gainUpdates[band], gainQuantile)
             logGain[band] += step
             gainUpdates[band]++
         }
         if (refSum > 0.0) {
-            logGainAll += quantileStep(ln((micSum + TINY) / refSum), logGainAll, gainUpdatesAll)
+            logGainAll += quantileStep(ln((micSum + TINY) / refSum), logGainAll, gainUpdatesAll, gainQuantile)
             gainUpdatesAll++
         }
     }
@@ -250,7 +252,8 @@ internal class EchoEstimator(
         val age = MAX_DELAY_HOPS + 1
         if (jump(refEnvelope, age) < ln(REFERENCE_ONSET)) return
         if (refEnvelope[((hops - 1 - age) % historySize).toInt()] < ln(AUDIBLE_REFERENCE)) return
-        val best = (0..MAX_DELAY_HOPS).maxBy { lag -> jump(micEnvelope, age - lag) }
+        // The loudspeaker needs at least the output latency; shorter lags are the player or noise.
+        val best = (MIN_DELAY_HOPS..MAX_DELAY_HOPS).maxBy { lag -> jump(micEnvelope, age - lag) }
         if (jump(micEnvelope, age - best) < ln(MICROPHONE_ONSET)) return // not heard (e.g. under a loud stroke)
 
         delayVotes.addLast(best)
@@ -258,9 +261,9 @@ internal class EchoEstimator(
         // The lag most votes agree with (±1 hop); it must hold at least two and half of them.
         val (winner, support) = (0..MAX_DELAY_HOPS).map { lag -> lag to delayVotes.count { abs(it - lag) <= 1 } }
             .maxWith(compareBy<Pair<Int, Int>> { it.second }.thenBy { lag -> delayVotes.count { it == lag.first } })
-        if (support < 2 || 2 * support < delayVotes.size) return
+        if (support < MIN_DELAY_SUPPORT || 2 * support < delayVotes.size) return
         val current = delayHops
-        if (current == null || abs(winner - current) > 1 && support >= 3) delayHops = winner
+        if (current == null || abs(winner - current) > 1 && support >= MIN_DELAY_SUPPORT + 1) delayHops = winner
     }
 
     private fun windowStart(lagHops: Int) = reference.size - windowSize - lagHops * hop
@@ -303,6 +306,8 @@ internal class EchoEstimator(
         const val LEVEL_QUANTILE = 0.9
         const val LOUD_REFERENCE = 1e-5 // -50 dB
         const val DELAY_VOTES = 9
+        const val MIN_DELAY_SUPPORT = 3
+        const val MIN_DELAY_HOPS = 2
         const val REFERENCE_ONSET = 4.0 // energy ratio
         const val MICROPHONE_ONSET = 2.0
         const val AUDIBLE_REFERENCE = 1e-6 // -60 dB

@@ -31,9 +31,17 @@ data class DetectionParameters(
     val ownSoundShare: Double = 0.5,
     /**
      * Before the app's sound can be removed (or where it is too quiet to measure), a stroke must be
-     * this many times louder than the microphone usually is while the app plays.
+     * this many times louder than the microphone usually is while the app plays; 0 = off (then
+     * only the app's current note is ignored meanwhile, as without echo cancellation).
      */
-    val fallbackMargin: Double = 2.0,
+    val fallbackMargin: Double = 0.0,
+    /**
+     * With the app's sound in the microphone, a stroke within 400 ms after a recognised note must
+     * raise the total level by this factor (what remains of that note beats with the app's sound).
+     */
+    val followUpRise: Double = 2.5,
+    /** Quantile of microphone/reference the loudspeaker's gains follow; lower resists the player's notes more. */
+    val gainQuantile: Double = 0.5,
 )
 
 /** As stored in recordings (`info["detectionParameters"]`). */

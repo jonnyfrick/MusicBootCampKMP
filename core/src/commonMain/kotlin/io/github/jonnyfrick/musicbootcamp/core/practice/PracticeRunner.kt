@@ -85,8 +85,13 @@ class PracticeRunner(
             while (isActive) {
                 session.finishEvaluation()?.let(::report)
                 if (maxSteps != null && given >= maxSteps) {
-                    // Like a late answer to a step change, the last note may be answered a bit late.
+                    // No next note follows the last one, so its answer may take up to one more step.
                     delay(tolerance)
+                    var waited = 0L
+                    while (!session.currentStepAnswered() && waited < settings.stepPeriodMillis) {
+                        delay(END_POLL_MILLIS)
+                        waited += END_POLL_MILLIS
+                    }
                     session.end()?.let(::report)
                     _status.update { it.copy(finished = true) }
                     break
@@ -119,6 +124,10 @@ class PracticeRunner(
         jobs = emptyList()
         withContext(sessionDispatcher) { output.send(MidiMessage.allNotesOff()) }
         _status.update { it.copy(running = false) }
+    }
+
+    private companion object {
+        const val END_POLL_MILLIS = 20L
     }
 
     private fun report(evaluation: Evaluation) {

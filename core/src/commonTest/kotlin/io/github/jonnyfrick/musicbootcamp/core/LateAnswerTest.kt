@@ -170,6 +170,31 @@ class LateAnswerTest {
         runner.stop()
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun theLastNoteMayBeAnsweredUpToAStepLater() = runTest {
+        val settings = mono.copy(breathingTime = 1.0f)
+        val input = MutableSharedFlow<MidiMessage>(extraBufferCapacity = 8)
+        val runner = PracticeRunner(
+            backgroundScope, settings, LearnedSequences(), { }, input,
+            random = KotlinRandomSource(Random(3)),
+            lateAnswerTolerance = 150.milliseconds,
+            maxSteps = 2,
+            sessionDispatcher = StandardTestDispatcher(testScheduler),
+        )
+        runner.start()
+        runCurrent()
+        advanceTimeBy(1_500)
+        val last = runner.status.value.given.single()
+        advanceTimeBy(1_000) // 2500 ms: after the tolerance, but there is no next note to confuse it with
+        assertFalse(runner.status.value.finished)
+        input.emit(key(last))
+        advanceTimeBy(100)
+        assertTrue(runner.status.value.finished)
+        assertEquals(1, runner.status.value.correct)
+        runner.stop()
+    }
+
     @Test
     fun ownSoundGateLetsOtherNotesThroughWhileTheAppPlays() {
         val time = TestTimeSource()

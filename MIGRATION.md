@@ -191,11 +191,15 @@ messages, so the exercise logic is the same as with a MIDI keyboard.
   what exceeds the prediction (and requires the total level to rise, and near the app's own
   onsets to stand out against its sound), and `PitchDetector` removes the predicted spectrum.
   Until the prediction is ready (a few notes into an exercise; in a room where the app is too
-  quiet in the microphone to measure, never), a stroke must be `fallbackMargin` (2×) louder than
-  the loud end of what the microphone hears while the app plays (4× right after the app starts a
-  note); this is learned without the delay. (At first input was simply blocked then, which in
-  real recordings — app 20 dB below the piano, delay never found — blocked every other run
-  completely.) So every note counts, including the one the app is playing. With other outputs
+  quiet in the microphone to measure, never), `OwnSoundGate` applies instead: only the app's
+  current note (and octaves) is ignored, so late answers to the previous note count at once.
+  (At first input was simply blocked then, which in real recordings — app 20 dB below the piano,
+  delay never found — blocked every other run completely; a level threshold learned from the
+  microphone, `fallbackMargin`, now off by default, failed when the player plays all the time.)
+  Within 400 ms after a recognised note, a new stroke over the app's sound must raise the total
+  level by `followUpRise` (2.5×): the rest of the note beats with the app's sound, and one such
+  false stroke once shifted all later answers by a step. With the prediction ready every note
+  counts, including the one the app is playing. With other outputs
   `OwnSoundGate` below is used. Tests: `EchoCancellationTest` (synthetic room with reflections,
   reverberation and noise). The NSDF is now capped at 1: after removing a background, long lags
   could exceed it and push the true first peak below the threshold (sub-octave errors); without a
@@ -218,7 +222,8 @@ messages, so the exercise logic is the same as with a MIDI keyboard.
   the end of the audio received so far (±1 block). `RecordingReplayTest` replays them through
   `NoteTracker` (see README). Recordings are personal data: never commit them.
 - Optimization mode (Preferences → Microphone): every exercise stops by itself after n notes
-  (`PracticeRunner(maxSteps = …)`, the last note is evaluated after the late-answer tolerance)
+  (`PracticeRunner(maxSteps = …)`; no next note follows the last one, so its answer may come up
+  to one step period after the tolerance)
   and is recorded; the detection parameters (`core/pitch/DetectionParameters`, stored in
   `preferences.json`, defaults = the tuned constants) can be edited, and the Practice tab lists
   the last run step by step (`summarize`), so the player can report where they played something

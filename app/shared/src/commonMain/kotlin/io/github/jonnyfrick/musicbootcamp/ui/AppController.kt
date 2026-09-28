@@ -25,6 +25,8 @@ import io.github.jonnyfrick.musicbootcamp.core.pitch.DetectionParameters
 import io.github.jonnyfrick.musicbootcamp.core.pitch.toJson
 import io.github.jonnyfrick.musicbootcamp.core.pitch.NoteTracker
 import io.github.jonnyfrick.musicbootcamp.core.pitch.detectNotes
+import io.github.jonnyfrick.musicbootcamp.core.pitch.detectedNotes
+import io.github.jonnyfrick.musicbootcamp.core.pitch.toNoteOn
 import io.github.jonnyfrick.musicbootcamp.core.practice.OwnSoundGate
 import io.github.jonnyfrick.musicbootcamp.platform.AudioInputPort
 import io.github.jonnyfrick.musicbootcamp.platform.MidiInputPort
@@ -364,11 +366,12 @@ class AppController(
         val audio = services.audio.open(preferences.audioInputDevice)
         closers += audio::close
         // Without headphones the microphone hears the app. If the app renders its synthesizer
-        // itself, it knows what it played and removes that; otherwise input matching it is ignored.
+        // itself, it knows what it played and removes that; until it can (and with other outputs),
+        // input matching the app's current note is ignored.
         val parameters = preferences.detectionParameters
         val rendered = if (preferences.usesHeadphones || !parameters.echoCancellation) null else openRenderedOutput(audio.sampleRate)
         val midiOutput = rendered ?: openOutput()
-        val ownSound = if (preferences.usesHeadphones || rendered != null) null else OwnSoundGate(midiOutput)
+        val ownSound = if (preferences.usesHeadphones) null else OwnSoundGate(midiOutput)
         gate = ownSound
         // The tolerance counts from the key stroke; the note arrives only once it is recognised.
         lateAnswerTolerance = preferences.lateAnswerToleranceMillis.milliseconds +
@@ -383,15 +386,12 @@ class AppController(
         val blocks = if (rendered != null) audio.blocksWith(rendered::playedAudio) else audio.blocks.map { AudioBlock(it) }
         return blocks
             .onEach { block -> recording?.audio(listOfNotNull(block.microphone, block.reference)) }
-            .detectNotes(
-                audio.sampleRate, preferences.referenceAHz,
-                onNote = { recording?.detected(it) },
-                onLevel = { microphoneLevel = it },
-                parameters = parameters,
-            )
+            .detectedNotes(audio.sampleRate, preferences.referenceAHz, onLevel = { microphoneLevel = it }, parameters = parameters)
+            .onEach { recording?.detected(it) }
             .flowOn(Dispatchers.Default)
             // Evaluated where the exercise runs, which is also where the gate sees the notes played.
-            .filter { ownSound?.accepts(it) ?: true }
+            .filter { note -> note.midiNote in 0..127 && (note.ownSoundRemoved || ownSound?.accepts(note.toNoteOn()) ?: true) }
+            .map { it.toNoteOn() }
             .onEach { recording?.accepted(it) }
     }
 

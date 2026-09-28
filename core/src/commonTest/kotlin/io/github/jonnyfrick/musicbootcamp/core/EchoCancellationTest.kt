@@ -53,11 +53,23 @@ class EchoCancellationTest {
         return echo
     }
 
+    /**
+     * Like the app: the tracker, then — for notes recognised before the app's sound could be
+     * removed — the own-sound gate, which ignores the app's current note (and its octaves) while it
+     * sounds (half a step, [appAudio]) and 200 ms after.
+     */
     private fun detect(microphone: FloatArray, reference: FloatArray?, blockSize: Int = 480): List<DetectedNote> {
         val tracker = NoteTracker(sampleRate)
-        return microphone.indices.chunked(blockSize).flatMap { indices ->
+        val notes = microphone.indices.chunked(blockSize).flatMap { indices ->
             val range = indices.first()..indices.last()
             tracker.process(microphone.sliceArray(range), reference?.sliceArray(range))
+        }
+        if (reference == null) return notes
+        return notes.filter { note ->
+            val seconds = note.seconds()
+            val step = seconds.toInt()
+            val own = appNotes.getOrNull(step)?.takeIf { seconds - step < 0.5 + 0.2 }
+            note.ownSoundRemoved || own == null || (note.midiNote - own) % 12 != 0
         }
     }
 
@@ -88,7 +100,8 @@ class EchoCancellationTest {
         // Input must not stay blocked just because the app's sound cannot be learned.
         val reference = appAudio(appNotes, seconds = 17.0)
         val microphone = roomEcho(reference, delaySamples = 1_700, gain = 0.0)
-        val answers = (0 until appNotes.size - 1).map { step -> appNotes[step] to step + 0.6 }
+        // Answered after the app's note has ended (at 0.5) and the own-sound gate's 200 ms.
+        val answers = (0 until appNotes.size - 1).map { step -> appNotes[step] to step + 0.8 }
         answers.forEach { (note, time) -> addPianoStroke(microphone, note, startSeconds = time, durationSeconds = 0.3, seed = 7 * note) }
 
         val detected = detect(microphone, reference)

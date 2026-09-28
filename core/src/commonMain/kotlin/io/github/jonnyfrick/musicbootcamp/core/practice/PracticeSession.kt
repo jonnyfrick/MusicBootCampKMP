@@ -122,6 +122,9 @@ class PracticeSession(
      * Evaluates the current step without giving a new one, to end a run of a fixed length;
      * null before the first step. Finish a pending evaluation first ([finishEvaluation]).
      */
+    /** Whether the current step has its answer (so a run may end without waiting any longer). */
+    fun currentStepAnswered(): Boolean = pendingGiven == null && corrector.hasAnswer()
+
     fun end(): Evaluation? {
         finishEvaluation()
         if (steps == 0) return null

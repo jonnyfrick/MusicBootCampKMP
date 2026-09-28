@@ -139,10 +139,14 @@ off-screen into `app/desktopApp/build/screenshots` and runs an exercise against 
   tests still pass. Tests: `CoreTest.learnedSequencesOutsideTheRangeDoNotLeadTheExerciseAway`,
   `CoreTest.randomStepsFindBackIntoTheRange`.
 - **Late answers with the microphone.** In Java a key press counted for whichever step was running
-  when it arrived. With microphone input, a step still without an answer when the next note starts
-  now waits for the late-answer tolerance: key presses in that time answer the previous step
-  (`PracticeSession.step(deferEvaluation = true)`, `PracticeRunner(lateAnswerTolerance = …)`,
-  capped at half the step period). The next note still starts on time. A step answered in time is
+  when it arrived. With microphone input (single notes), a step still without an answer when the
+  next note starts stays open for the late-answer tolerance (`PracticeSession.step(deferEvaluation
+  = true)`, `PracticeRunner(lateAnswerTolerance = …)`); at a fast tempo several steps can be open.
+  A key press answers the oldest open step — or, if it is exactly the note of a later open step,
+  that one, and the older ones count as missed, so a skipped note or a false stroke does not shift
+  all later answers by a step. (At first the tolerance was capped at half the step period and only
+  the previous step could be answered; at 0.7 s breathing time answers 1.2 s after their note were
+  then lost.) The next note still starts on time. A step answered in time is
   evaluated at once as before, so the exercise and the random numbers consumed are unchanged; only
   a deferred evaluation stores its mistake after the next note was chosen, so it can influence the
   steps after the next one only. MIDI input keeps the Java behaviour (tolerance 0). Tests:
@@ -210,7 +214,7 @@ messages, so the exercise logic is the same as with a MIDI keyboard.
   ignored then, which left too little time at fast tempos: at 1 s breathing time and 50 % sustain
   only the last 300 ms of a step.) A correct answer played while the same note still sounds is
   still ignored; subtracting the app's own sound from the microphone signal is planned.
-- Late answers: see "Deliberate changes". The tolerance (Preferences → "Late answers", 0–300 ms,
+- Late answers: see "Deliberate changes". The tolerance (Preferences → "Late answers", 0–500 ms,
   default 150 ms, `lateAnswerToleranceMillis` in `preferences.json`) counts from the key stroke:
   `NoteTracker.detectionDelay` (about 58 ms) is added, because the note reaches the exercise only
   once it is recognised. Audio buffering (one 11.6 ms block on the desktop) is not added.

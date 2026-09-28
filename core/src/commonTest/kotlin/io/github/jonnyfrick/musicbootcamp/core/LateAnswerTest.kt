@@ -41,9 +41,9 @@ class LateAnswerTest {
         assertTrue(second.evaluationPending, "no answer yet, so the first step waits")
         assertNull(second.previousCorrect)
 
-        assertEquals(Evaluation(correct = true, storedMistake = false), session.onMidiInput(key(60)))
-        assertNull(session.onMidiInput(key(second.given.single())), "the next stroke answers the current step")
-        assertNull(session.finishEvaluation(), "nothing pending any more")
+        assertEquals(listOf(Evaluation(correct = true, storedMistake = false)), session.onMidiInput(key(60)))
+        assertEquals(emptyList(), session.onMidiInput(key(second.given.single())), "the next stroke answers the current step")
+        assertEquals(emptyList(), session.expire(second.openStep!!), "nothing open any more")
 
         val third = session.step(deferEvaluation = true)
         assertFalse(third.evaluationPending)
@@ -56,8 +56,8 @@ class LateAnswerTest {
         session.step(deferEvaluation = true)
         val second = session.step(deferEvaluation = true)
 
-        assertEquals(Evaluation(correct = false, storedMistake = false), session.finishEvaluation())
-        assertNull(session.finishEvaluation())
+        assertEquals(listOf(Evaluation(correct = false, storedMistake = false)), session.expire(second.openStep!!))
+        assertEquals(emptyList(), session.expire(second.openStep!!))
 
         session.onMidiInput(key(second.given.single()))
         assertEquals(true, session.step(deferEvaluation = true).previousCorrect)
@@ -72,7 +72,7 @@ class LateAnswerTest {
         val second = session.step(deferEvaluation = true).given.single()
         session.step(deferEvaluation = true)
 
-        val evaluation = session.onMidiInput(key(second + 1))
+        val evaluation = session.onMidiInput(key(second + 1)).first()
         assertEquals(Evaluation(correct = false, storedMistake = true), evaluation)
         assertEquals(listOf(1, 0, 0, 0, 0), memory.countsByPriority(), "the sequence 60, $second")
     }
@@ -102,18 +102,64 @@ class LateAnswerTest {
     }
 
     @Test
-    fun lateStrokesFillBothVoicesOfTheStepBefore() {
+    fun anAnswerMayComeAfterSeveralLaterNotes() {
+        // Fast tempo: the player answers each note while the notes after it already sound.
+        val session = PracticeSession(mono, LearnedSequences(), KotlinRandomSource(Random(3))) { }
+        val given = List(3) { session.step(deferEvaluation = true).given.single() }
+        assertEquals(listOf(Evaluation(true, false)), session.onMidiInput(key(given[0])))
+        assertEquals(listOf(Evaluation(true, false)), session.onMidiInput(key(given[1])))
+        assertEquals(emptyList(), session.onMidiInput(key(given[2])), "the current step is evaluated at the next one")
+        assertEquals(true, session.step(deferEvaluation = true).previousCorrect)
+    }
+
+    @Test
+    fun aStrokeMatchingALaterOpenStepSkipsAMissedOne() {
+        // A note the player left out must not shift all later answers by one step.
+        val session = PracticeSession(mono, LearnedSequences(), KotlinRandomSource(Random(3))) { }
+        val given = List(3) { session.step(deferEvaluation = true).given.single() }
+        assertEquals(
+            listOf(Evaluation(false, false), Evaluation(true, false)),
+            session.onMidiInput(key(given[1])),
+            "the first step counts as missed, the second as answered",
+        )
+    }
+
+    @Test
+    fun twoVoicesAreEvaluatedAtTheStepChangeAsBefore() {
         val settings = PracticeSettings(
             mode = PracticeMode.TWO_VOICES_PURE_RANDOM, lowLimit = 48, highLimit = 72, startPosition = 60,
         )
         val session = PracticeSession(settings, LearnedSequences(), KotlinRandomSource(Random(5))) { }
         session.step(deferEvaluation = true)
-        val given = session.step(deferEvaluation = true).given
-        val third = session.step(deferEvaluation = true)
-        assertTrue(third.evaluationPending)
+        val second = session.step(deferEvaluation = true)
+        assertFalse(second.evaluationPending, "late answers are for single notes (microphone input)")
+    }
 
-        assertNull(session.onMidiInput(key(given[1])), "one voice is not the whole answer yet")
-        assertEquals(true, session.onMidiInput(key(given[0]))?.correct)
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun atFastTempoAnswersHalfAStepLateAllCount() = runTest {
+        val settings = mono.copy(breathingTime = 0.7f)
+        val input = MutableSharedFlow<MidiMessage>(extraBufferCapacity = 8)
+        val given = mutableListOf<Int>()
+        val runner = PracticeRunner(
+            backgroundScope, settings, LearnedSequences(), { if (it.isNoteOn) given += it.data1 }, input,
+            random = KotlinRandomSource(Random(3)),
+            lateAnswerTolerance = 560.milliseconds, // 500 ms + detection
+            maxSteps = 8,
+            sessionDispatcher = StandardTestDispatcher(testScheduler),
+        )
+        runner.start()
+        runCurrent()
+        // Every answer 500 ms after the next note started, i.e. 1.2 s after its own note.
+        for (step in 0 until 8) {
+            advanceTimeBy(if (step == 0) 1_200L else 700L)
+            input.emit(key(given[step]))
+            runCurrent()
+        }
+        advanceTimeBy(2_000)
+        assertTrue(runner.status.value.finished)
+        assertEquals(8, runner.status.value.correct, "wrong: ${runner.status.value.wrong}")
+        runner.stop()
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)

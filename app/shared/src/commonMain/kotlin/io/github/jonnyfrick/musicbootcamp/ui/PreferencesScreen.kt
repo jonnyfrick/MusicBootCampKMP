@@ -133,8 +133,8 @@ private fun MicrophoneSettings(controller: AppController) {
         Text("${preferences.lateAnswerToleranceMillis} ms", Modifier.width(90.dp))
     }
     Hint(
-        "A note you strike up to this long after the next note has started still answers the previous one, " +
-            "if that had no answer yet.",
+        "A note you strike up to this long after the next note has started still answers the note before " +
+            "(at a fast tempo also after several notes), if that had no answer yet.",
     )
     controller.recordingsLocation?.let { location ->
         Row(verticalAlignment = Alignment.CenterVertically) {

@@ -22,7 +22,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.time.Duration
-import kotlin.time.Duration.Companion.milliseconds
 
 /** Live figures of a running exercise, for the UI. */
 data class PracticeStatus(
@@ -44,9 +43,9 @@ data class PracticeStatus(
  * All session access — steps and incoming MIDI — happens on one confined
  * dispatcher, so the session needs no locking.
  *
- * With a [lateAnswerTolerance], a step still without an answer when the next note starts is
- * evaluated only after that time, so a key press arriving shortly after the change counts for
- * the step it answers. It is capped at half the step period.
+ * With a [lateAnswerTolerance], a step still without an answer when the next note starts stays
+ * open for that much longer, so a key press arriving after the change can still answer it —
+ * at a fast tempo also after several later notes have started (see [PracticeSession.onMidiInput]).
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class PracticeRunner(
@@ -69,7 +68,7 @@ class PracticeRunner(
     private val _status = MutableStateFlow(PracticeStatus())
     val status: StateFlow<PracticeStatus> = _status.asStateFlow()
 
-    private val tolerance = minOf(lateAnswerTolerance, (settings.stepPeriodMillis / 2).milliseconds)
+    private val tolerance = lateAnswerTolerance
 
     private var jobs: List<Job> = emptyList()
 
@@ -77,22 +76,21 @@ class PracticeRunner(
         if (jobs.isNotEmpty()) return
         _status.value = PracticeStatus(running = true)
         val inputJob = scope.launch(sessionDispatcher) {
-            input.collect { message -> session.onMidiInput(message)?.let(::report) }
+            input.collect { message -> session.onMidiInput(message).forEach(::report) }
         }
         val clockJob = scope.launch(sessionDispatcher) {
             // Like Timer.schedule(task, 0, period): first step immediately, then fixed delay.
             var given = 0
             while (isActive) {
-                session.finishEvaluation()?.let(::report)
                 if (maxSteps != null && given >= maxSteps) {
                     // No next note follows the last one, so its answer may take up to one more step.
                     delay(tolerance)
                     var waited = 0L
-                    while (!session.currentStepAnswered() && waited < settings.stepPeriodMillis) {
+                    while (!session.allAnswered() && waited < settings.stepPeriodMillis) {
                         delay(END_POLL_MILLIS)
                         waited += END_POLL_MILLIS
                     }
-                    session.end()?.let(::report)
+                    session.end().forEach(::report)
                     _status.update { it.copy(finished = true) }
                     break
                 }
@@ -106,10 +104,10 @@ class PracticeRunner(
                 }
                 _status.update { it.after(result) }
                 onStep(result)
-                if (result.evaluationPending) {
+                result.openStep?.let { number ->
                     launch {
                         delay(tolerance)
-                        session.finishEvaluation()?.let(::report)
+                        session.expire(number).forEach(::report)
                     }
                 }
                 delay(settings.stepPeriodMillis)

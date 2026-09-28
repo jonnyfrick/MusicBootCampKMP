@@ -179,7 +179,7 @@ class ChordTracker(
     private companion object {
         const val FFT_SIZE = 8192
         const val HISTORY_SECONDS = 4
-        const val RANGE_MARGIN = 12
+        const val RANGE_MARGIN = 2
         const val RESTART_RISE = 2.0
         val HANN = DoubleArray(FFT_SIZE) { 0.5 - 0.5 * cos(2 * PI * it / FFT_SIZE) }
         val HANN_ENERGY = HANN.sumOf { it * it } / FFT_SIZE * FFT_SIZE

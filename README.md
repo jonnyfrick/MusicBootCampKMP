@@ -68,7 +68,9 @@ This writes a step table, a CSV of every analysis hop and a spectrogram PNG per 
 `core/build/analysis/<name>/`. Optional: `-Pmusicbootcamp.played=4=62,9=-` (what you played
 where it was not the given note, `-` = nothing), `-Pmusicbootcamp.parameters={"rawRise":1.3}`
 (replay with changed detection parameters) and `-Pmusicbootcamp.sweep=true` (rank a grid of
-parameters). "Optimization mode" in Preferences → Microphone makes such test runs easy: a fixed
+parameters), `-Pmusicbootcamp.voices=2` (use the chord recognition), `-Pmusicbootcamp.templates=<piano-templates.json>`
+(a piano calibration) and `-Pmusicbootcamp.learnTemplates=<file>` (with `voices=1`: learn piano templates from single-note
+recordings). "Optimization mode" in Preferences → Microphone makes such test runs easy: a fixed
 number of notes, always recorded, detection parameters editable, and a step-by-step list afterwards.
 
 ### Other targets

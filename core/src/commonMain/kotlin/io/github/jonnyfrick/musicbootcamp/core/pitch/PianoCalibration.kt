@@ -18,7 +18,8 @@ class PianoCalibration(
     private var lastSpectrum: DoubleArray? = null
 
     private val tracker = ChordTracker(
-        sampleRate, 1, notes.min()..notes.max(), referenceAHz, parameters, expected = { listOfNotNull(target?.let(::listOf)) },
+        // A wide range, so a slip is heard as the note it was and not as a neighbour of the asked one.
+        sampleRate, 1, notes.min() - 12..notes.max() + 12, referenceAHz, parameters, expected = { listOfNotNull(target?.let(::listOf)) },
     ).also { tracker -> tracker.spectrumTrace = { _, spectrum -> lastSpectrum = spectrum } }
 
     /** The note to play now; null when all are done. */

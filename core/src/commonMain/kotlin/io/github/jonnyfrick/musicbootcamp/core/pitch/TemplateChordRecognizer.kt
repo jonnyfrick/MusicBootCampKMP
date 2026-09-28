@@ -75,7 +75,9 @@ class TemplateChordRecognizer(
                 if (chord.size > 1) hypotheses += (chord - chord[i]).sorted()
                 for (step in NEAR_MISSES) {
                     val moved = chord[i] + step
-                    if (moved in LogSpectrum.LOWEST_NOTE..LogSpectrum.HIGHEST_NOTE - 12 && moved !in chord) {
+                    // Only within the range: which wrong chord it was does not matter, and outside it the
+                    // octave ambiguity of real pianos (weak bass fundamentals) would only add errors.
+                    if (moved in range && moved !in chord) {
                         hypotheses += (chord - chord[i] + moved).sorted()
                     }
                 }

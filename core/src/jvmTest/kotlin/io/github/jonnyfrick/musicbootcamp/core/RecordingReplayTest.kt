@@ -50,6 +50,8 @@ import kotlin.test.assertTrue
  *     [-Pmusicbootcamp.parameters={"rawRise":1.3}]  parameters to change for the replay
  *     [-Pmusicbootcamp.sweep=true]             also try a grid of parameters and rank them
  *     [-Pmusicbootcamp.templates=<piano-templates.json>]  the piano calibration (chords)
+ *     [-Pmusicbootcamp.voices=1]               use the chord recognition (with this many voices)
+ *     [-Pmusicbootcamp.learnTemplates=<file>]  with voices=1: learn piano templates from the strokes
  * ```
  */
 class RecordingReplayTest {
@@ -59,7 +61,12 @@ class RecordingReplayTest {
         assumeTrue("No recordings given (-Pmusicbootcamp.recordings=…)", path != null)
         val root = File(path!!)
         val files = if (root.isDirectory) root.listFiles { f -> f.name.endsWith(".wav") }!!.sorted() else listOf(root)
-        files.forEach { println(Analysis(it).run()) }
+        val learning = TemplateLearning()
+        files.forEach { println(Analysis(it, learning = learning).run()) }
+        System.getProperty("musicbootcamp.learnTemplates")?.let { target ->
+            File(target).writeText(SetupRepository.json.encodeToString(learning.result()))
+            println("templates for ${learning.result().notes.keys.sorted()} written to $target")
+        }
     }
 
     @Test
@@ -136,11 +143,32 @@ private class Detection(
     val detail: String,
     /** When the app gets it (after the analysis window for chords), which is when its gate decides. */
     val decidedAt: Long = sampleTime,
+    /** The spectrum the chord recognition decided on (log axis). */
+    val spectrum: DoubleArray? = null,
 )
+
+/**
+ * `-Pmusicbootcamp.learnTemplates=<file>`: learns the piano's note templates from single-note
+ * recordings analysed with the chord recognition (`voices=1`): the spectrum of every stroke that
+ * answered a step, labelled with the note that was played there (so octave errors teach too).
+ */
+private class TemplateLearning {
+    private val sums = mutableMapOf<Int, DoubleArray>()
+    private val counts = mutableMapOf<Int, Int>()
+
+    fun add(note: Int, spectrum: DoubleArray) {
+        val length = kotlin.math.sqrt(spectrum.sumOf { it * it }).takeIf { it > 0 } ?: return
+        val sum = sums.getOrPut(note) { DoubleArray(spectrum.size) }
+        for (i in spectrum.indices) sum[i] += spectrum[i] / length
+        counts[note] = (counts[note] ?: 0) + 1
+    }
+
+    fun result() = LearnedTemplates(notes = sums.mapValues { (note, sum) -> sum.map { it / counts.getValue(note) } })
+}
 
 private enum class Outcome { HIT, MISSED, WRONG_NOTE, OCTAVE, OWN_SOUND, EXTRA }
 
-private class Analysis(private val wavFile: File, output: File? = null) {
+private class Analysis(private val wavFile: File, output: File? = null, private val learning: TemplateLearning? = null) {
     private val name = wavFile.name.removeSuffix(".wav")
     private val output = output ?: File("build/analysis/$name")
     private val audio: WavAudio = Wav.read(wavFile.readBytes())
@@ -163,7 +191,10 @@ private class Analysis(private val wavFile: File, output: File? = null) {
         return SetupRepository.json.decodeFromJsonElement(DetectionParameters.serializer(), JsonObject(recorded + changes))
     }
 
-    private val voices = log?.info?.get("voices")?.toIntOrNull() ?: 1
+    // `-Pmusicbootcamp.voices=2` analyses with the chord recognition (also a single-note recording, as a check).
+    private val forcedVoices = System.getProperty("musicbootcamp.voices")?.toIntOrNull()
+    private val voices = forcedVoices ?: log?.info?.get("voices")?.toIntOrNull() ?: 1
+    private val chordPath = voices > 1 || forcedVoices != null
     private val range = log?.info?.get("range")?.split("..")?.let { it[0].toInt()..it[1].toInt() } ?: 48..72
     private val chordParameters = chordParameters(System.getProperty("musicbootcamp.parameters"))
 
@@ -200,13 +231,21 @@ private class Analysis(private val wavFile: File, output: File? = null) {
             ownSound += trace.ownSoundPower?.let { bins(it, it.size) } ?: FloatArray(BINS)
         }
         writeCsv(traces)
+        if (learning != null && voices == 1) {
+            val (matched, _) = score(detected)
+            for ((step, result) in matched) {
+                val (outcome, detection) = result
+                val played = expectations.first { it.step == step }.played?.singleOrNull() ?: continue
+                if (outcome in setOf(Outcome.HIT, Outcome.OCTAVE)) detection?.spectrum?.let { learning.add(played, it) }
+            }
+        }
         val table = stepTable(detected)
         File(output, "steps.txt").writeText(table)
         drawSpectrogram(traces, ownSound, detected)
 
         return buildString {
             appendLine("== $name: ${microphone.size / sampleRate} s, voices: $voices, reference: ${reference != null}, templates: ${templates.notes.size}")
-            appendLine("   parameters: ${if (voices == 1) parameters.toJson() else chordParameters.toJson()}")
+            appendLine("   parameters: ${if (!chordPath) parameters.toJson() else chordParameters.toJson()}")
             append(table)
             appendLine("   written to ${output.absolutePath}")
             if (System.getProperty("musicbootcamp.sweep") == "true") append(sweep())
@@ -219,7 +258,7 @@ private class Analysis(private val wavFile: File, output: File? = null) {
         chordParameters: ChordDetectionParameters = this.chordParameters,
         trace: ((HopTrace) -> Unit)? = null,
     ): List<Detection> {
-        val detections = if (voices == 1) {
+        val detections = if (!chordPath) {
             val tracker = NoteTracker(sampleRate, referenceA, parameters)
             tracker.trace = trace
             blocks { mic, ref -> tracker.process(mic, ref) }
@@ -231,11 +270,14 @@ private class Analysis(private val wavFile: File, output: File? = null) {
                 steps.filter { it.sample <= now }.takeLast(3).map { it.notes }
             }
             tracker.trace = trace
+            val spectra = mutableMapOf<Long, DoubleArray>()
+            tracker.spectrumTrace = { time, spectrum -> spectra[time] = spectrum }
             blocks { mic, ref -> tracker.process(mic, ref).also { now += mic.size } }.map {
                 val alternative = it.details.alternative?.joinToString("+") { note -> n(note) }
                 Detection(
                     it.onsetTime, it.notes, it.ownSoundRemoved,
                     "%.3f (%s %.3f)".format(Locale.ROOT, it.details.score, alternative, it.details.alternativeScore ?: 0.0), it.sampleTime,
+                    spectra[it.sampleTime],
                 )
             }
         }
@@ -337,7 +379,7 @@ private class Analysis(private val wavFile: File, output: File? = null) {
         }
     }
 
-    private fun sweep(): String = if (voices == 1) sweepNotes() else sweepChords()
+    private fun sweep(): String = if (!chordPath) sweepNotes() else sweepChords()
 
     private fun sweepChords(): String {
         val base = chordParameters

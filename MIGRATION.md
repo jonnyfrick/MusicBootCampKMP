@@ -282,9 +282,19 @@ several voices).
 - Recordings log the voices, the range and the chord parameters; `RecordingReplayTest` replays
   them by chord (`-Pmusicbootcamp.templates=…` for a calibration, `played=4=60+67`, `sweep=true`).
 - Tests (`ChordRecognitionTest`, synthetic piano): 149 of 150 intervals up to two octaves from
-  C2 (the exception: a fifth deep in the bass read an octave high — the calibration is meant for
-  such cases), wrong chords recognised as played, unison, triads, chords over the app's own
-  chords with room echo, calibration. Not yet checked against a real piano.
+  C2 (the exception: a fifth deep in the bass read an octave high), wrong chords recognised as
+  played, unison, triads, chords over the app's own chords with room echo, calibration.
+- Checked against real strokes (single-note recordings through the chord path with
+  `-Pmusicbootcamp.voices=1`, and two-note chords mixed from them): the piano model reads notes
+  below C4 an octave too high — on a real upright through a room microphone the fundamental there
+  is far weaker than the second partial, and it varies from note to note, so no simple model fits.
+  Templates learned from the player's own strokes (cross-validated: learned from half of the
+  recordings, tested on the other half) removed the octave errors on single notes (50 → 1) and
+  raised mixed real chords from 25 % to 78 % correct, with 1 % of wrong answers accepted as
+  right. Hence the calibration; `-Pmusicbootcamp.learnTemplates=<file>` learns templates from
+  single-note recordings as a start. Hypotheses stay within the exercise range ±2 semitones: which
+  wrong chord it was does not matter, and octave ambiguity outside it only added errors.
+  `givenBias` > 0 hardly raised the hits and let more wrong answers pass, so it defaults to 0.
 
 ## Storage
 

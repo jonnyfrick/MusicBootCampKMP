@@ -53,3 +53,31 @@ internal fun addPianoStroke(
         buffer[index] += (loudness * value * damper).toFloat()
     }
 }
+
+/**
+ * The reference as the microphone hears it: [delaySamples] later (output and input latency),
+ * [gain] quieter, with early reflections, a reverberation tail, and some noise.
+ */
+internal fun roomEcho(reference: FloatArray, delaySamples: Int, gain: Double, seed: Int = 1, sampleRate: Int = 44_100): FloatArray {
+    val random = Random(seed)
+    val tailLength = (0.12 * sampleRate).toInt()
+    val response = DoubleArray(tailLength + sampleRate / 1000)
+    response[0] = 1.0
+    response[(0.003 * sampleRate).toInt()] += 0.5
+    response[(0.007 * sampleRate).toInt()] -= 0.3
+    // Diffuse reverberation: one random reflection per millisecond, decaying.
+    for (i in (0.01 * sampleRate).toInt() until tailLength step sampleRate / 1000) {
+        response[i + random.nextInt(sampleRate / 1000)] += (random.nextDouble() - 0.5) * 0.4 * exp(-i / (0.04 * sampleRate))
+    }
+    val taps = response.indices.filter { response[it] != 0.0 }
+    val echo = FloatArray(reference.size)
+    for (n in echo.indices) {
+        var value = 0.0
+        for (k in taps) {
+            val index = n - delaySamples - k
+            if (index >= 0) value += response[k] * reference[index]
+        }
+        echo[n] = (gain * value + (random.nextDouble() - 0.5) * 0.002).toFloat()
+    }
+    return echo
+}

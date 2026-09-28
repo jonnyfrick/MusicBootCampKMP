@@ -55,6 +55,10 @@ class PracticeRunner(
     private val input: Flow<MidiMessage>,
     random: RandomSource = KotlinRandomSource(),
     lateAnswerTolerance: Duration = Duration.ZERO,
+    /** Called on the session dispatcher after every step, e.g. to log it. */
+    private val onStep: (StepResult) -> Unit = {},
+    /** Called on the session dispatcher for every late [Evaluation]. */
+    private val onEvaluation: (Evaluation) -> Unit = {},
     private val sessionDispatcher: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1),
 ) {
     private val session = PracticeSession(settings, memory, random, output)
@@ -83,6 +87,7 @@ class PracticeRunner(
                     }
                 }
                 _status.update { it.after(result) }
+                onStep(result)
                 if (result.evaluationPending) {
                     launch {
                         delay(tolerance)
@@ -104,6 +109,7 @@ class PracticeRunner(
     }
 
     private fun report(evaluation: Evaluation) {
+        onEvaluation(evaluation)
         _status.update {
             it.copy(
                 correct = it.correct + if (evaluation.correct) 1 else 0,

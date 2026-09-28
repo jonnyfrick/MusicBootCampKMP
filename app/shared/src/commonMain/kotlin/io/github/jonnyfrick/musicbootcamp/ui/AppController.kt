@@ -3,6 +3,7 @@ package io.github.jonnyfrick.musicbootcamp.ui
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import io.github.jonnyfrick.musicbootcamp.core.audio.SessionRecorder
 import io.github.jonnyfrick.musicbootcamp.core.learning.LearnedSequences
 import io.github.jonnyfrick.musicbootcamp.core.legacy.LegacyImport
 import io.github.jonnyfrick.musicbootcamp.core.midi.Tuning
@@ -33,7 +34,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -103,6 +106,8 @@ class AppController(
     private var output: MidiOutputPort? = null
     private var gate: OwnSoundGate? = null
     private var lateAnswerTolerance = Duration.ZERO
+    private var recorder: SessionRecorder? = null
+    private var recordingInfo: Map<String, String> = emptyMap()
     private val closers = mutableListOf<() -> Unit>()
     private var micTestPort: AudioInputPort? = null
     private var micTestJob: Job? = null
@@ -269,11 +274,21 @@ class AppController(
             message = "Could not open the input: ${it.message}"
             return
         }
-        val practiceOutput = gate ?: output!!
+        val practiceOutput = (gate ?: output!!).let { port -> recorder?.recording(port) ?: port }
+        recordingInfo = mapOf(
+            "breathingTime" to settings.breathingTime.toString(),
+            "sustain" to settings.sustain.toString(),
+            "lateAnswerToleranceMillis" to preferences.lateAnswerToleranceMillis.toString(),
+            "usesHeadphones" to preferences.usesHeadphones.toString(),
+            "referenceAHz" to preferences.referenceAHz.toString(),
+            "midiOutputDevice" to (preferences.midiOutputDevice ?: ""),
+        )
 
         val practice = PracticeRunner(
             scope, settings, setup.memory(), practiceOutput, input,
             lateAnswerTolerance = if (microphone) lateAnswerTolerance else Duration.ZERO,
+            onStep = { recorder?.step(it) },
+            onEvaluation = { recorder?.evaluation(it) },
         )
         runner = practice
         running = true
@@ -301,6 +316,7 @@ class AppController(
         practice.stop()
         statusJob?.cancel()
         status = practice.status.value
+        finishRecording()
         closePorts()
         refreshSetupState()
         saveNow()
@@ -327,11 +343,32 @@ class AppController(
         // The tolerance counts from the key stroke; the note arrives only once it is recognised.
         lateAnswerTolerance = preferences.lateAnswerToleranceMillis.milliseconds +
             NoteTracker(audio.sampleRate).detectionDelay
+        val recording = if (preferences.recordMicrophone) {
+            services.recordings?.let { SessionRecorder(it.create(), audio.sampleRate, listOf("microphone")) }
+        } else {
+            null
+        }
+        recorder = recording
         return audio.blocks
-            .detectNotes(audio.sampleRate, preferences.referenceAHz, onLevel = { microphoneLevel = it })
+            .onEach { recording?.audio(listOf(it)) }
+            .detectNotes(
+                audio.sampleRate, preferences.referenceAHz,
+                onNote = { recording?.detected(it) },
+                onLevel = { microphoneLevel = it },
+            )
             .flowOn(Dispatchers.Default)
             // Evaluated where the exercise runs, which is also where the gate sees the notes played.
             .filter { ownSound?.accepts(it) ?: true }
+            .onEach { recording?.accepted(it) }
+    }
+
+    /** Writes the header and the log of a recorded session; the audio has stopped by now. */
+    private suspend fun finishRecording() {
+        val recording = recorder ?: return
+        recorder = null
+        runCatching { withContext(Dispatchers.Default) { recording.finish(recordingInfo) } }
+            .onSuccess { message = "Recording saved: ${recording.name}" }
+            .onFailure { message = "Could not save the recording: ${it.message}" }
     }
 
     private fun openOutput(): MidiOutputPort {
@@ -478,6 +515,8 @@ class AppController(
 
     fun setInputSource(source: InputSource) = updatePreferences { it.copy(inputSource = source) }
     fun setUsesHeadphones(uses: Boolean) = updatePreferences { it.copy(usesHeadphones = uses) }
+    fun setRecordMicrophone(record: Boolean) = updatePreferences { it.copy(recordMicrophone = record) }
+    val recordingsLocation: String? get() = services.recordings?.location
     fun setLateAnswerTolerance(millis: Int) =
         updatePreferences { it.copy(lateAnswerToleranceMillis = millis.coerceIn(0, MAX_LATE_ANSWER_TOLERANCE_MILLIS)) }
 

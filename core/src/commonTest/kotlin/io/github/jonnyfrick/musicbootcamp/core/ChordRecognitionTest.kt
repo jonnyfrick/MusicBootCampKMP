@@ -2,6 +2,7 @@ package io.github.jonnyfrick.musicbootcamp.core
 
 import io.github.jonnyfrick.musicbootcamp.core.pitch.ChordTracker
 import io.github.jonnyfrick.musicbootcamp.core.pitch.DetectedChord
+import io.github.jonnyfrick.musicbootcamp.core.pitch.PianoCalibration
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -98,5 +99,30 @@ class ChordRecognitionTest {
         val hits = found.map { it.notes }.filter { it in expectedAnswers }
         assertTrue(found.map { it.notes }.all { it in expectedAnswers }, "only the player's chords: ${found.map { it.notes to it.onsetTime / 44100.0 }}")
         assertTrue(hits.size >= appChords.size - 1, "${hits.size} of ${appChords.size}: ${found.map { it.notes to it.onsetTime / 44100.0 }}")
+    }
+
+    @Test
+    fun calibrationLearnsEachNoteAndIgnoresSlips() {
+        val notes = listOf(48, 49, 50)
+        val calibration = PianoCalibration(sampleRate, notes, 440.0)
+        val buffer = FloatArray((5.0 * sampleRate).toInt())
+        addPianoStroke(buffer, 48, startSeconds = 0.2, durationSeconds = 0.6)
+        addPianoStroke(buffer, 55, startSeconds = 1.2, durationSeconds = 0.6) // a slip: not the asked note
+        addPianoStroke(buffer, 49, startSeconds = 2.2, durationSeconds = 0.6)
+        addPianoStroke(buffer, 50, startSeconds = 3.2, durationSeconds = 0.6)
+        val heard = mutableListOf<List<Int>?>()
+        buffer.indices.chunked(512).forEach { block ->
+            calibration.process(buffer.sliceArray(block.first()..block.last()))
+            if (calibration.lastHeard != heard.lastOrNull()) heard += calibration.lastHeard
+        }
+        assertEquals(null, calibration.target, "all done")
+        assertEquals(notes.toSet(), calibration.result().notes.keys)
+        assertTrue(listOf(55) in heard, "the slip was reported: $heard")
+
+        // Learned from these synthetic strokes, the templates recognise them as well as the model.
+        val tracker = ChordTracker(sampleRate, 2, 36..84, learned = calibration.result(), expected = { listOf(listOf(48, 50)) })
+        val chordBuffer = chord(listOf(48, 50))
+        val found = chordBuffer.indices.chunked(512).flatMap { tracker.process(chordBuffer.sliceArray(it.first()..it.last())) }
+        assertEquals(listOf(listOf(48, 50)), found.map { it.notes })
     }
 }

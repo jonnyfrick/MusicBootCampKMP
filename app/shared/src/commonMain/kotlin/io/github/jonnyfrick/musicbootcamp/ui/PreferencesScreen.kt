@@ -42,7 +42,7 @@ internal fun PreferencesScreen(controller: AppController) {
         label = {
             when (it) {
                 InputSource.MIDI -> "MIDI keyboard"
-                InputSource.MICROPHONE -> "Microphone (acoustic piano, single notes)"
+                InputSource.MICROPHONE -> "Microphone (acoustic piano)"
             }
         },
         enabled = { !running && (it == InputSource.MIDI || controller.audioUnavailableReason == null) },

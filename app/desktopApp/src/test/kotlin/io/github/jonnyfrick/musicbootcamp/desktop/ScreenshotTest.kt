@@ -57,6 +57,37 @@ class ScreenshotTest {
     }
 
     @Test
+    fun renderChordSettings() {
+        // A two-voice setup with microphone input and optimization mode: the chord parameters and
+        // the piano calibration appear instead of the single-note ones.
+        val store = InMemoryDocumentStore()
+        runBlocking {
+            val imported = LegacyImport.importSetup(
+                "Duo",
+                File(legacyFolder, "settings_two_voices.xml").readText(),
+            ) { File(legacyFolder, it).takeIf(File::isFile)?.readText() }
+            SetupRepository(store).save(imported.setup)
+            store.write(
+                "preferences.json",
+                """{"lastSetup":"Duo","inputSource":"MICROPHONE","optimizationMode":true,"detectionParametersRevision":1}""",
+            )
+        }
+        val services = PlatformServices(FakeMidi(), store, legacyFiles = { null })
+        val scene = ImageComposeScene(width = 900, height = 2400, density = Density(1f)) { App(services) }
+        var time = 0L
+        fun settle(frames: Int = 30) = repeat(frames) {
+            Thread.sleep(15)
+            time += 16_000_000
+            scene.render(time)
+        }
+        settle(60)
+        scene.sendPointerEvent(PointerEventType.Press, Offset(787f, 88f))
+        scene.sendPointerEvent(PointerEventType.Release, Offset(787f, 88f))
+        settle()
+        File(output, "6-preferences-chords.png").writeBytes(scene.render(time).encodeToData(EncodedImageFormat.PNG)!!.bytes)
+    }
+
+    @Test
     fun renderAllScreens() {
         val store = InMemoryDocumentStore()
         runBlocking {

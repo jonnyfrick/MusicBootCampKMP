@@ -3,6 +3,7 @@ package io.github.jonnyfrick.musicbootcamp.core.audio
 import io.github.jonnyfrick.musicbootcamp.core.midi.MidiMessage
 import io.github.jonnyfrick.musicbootcamp.core.midi.MidiOutput
 import io.github.jonnyfrick.musicbootcamp.core.persistence.SetupRepository
+import io.github.jonnyfrick.musicbootcamp.core.pitch.DetectedChord
 import io.github.jonnyfrick.musicbootcamp.core.pitch.DetectedNote
 import io.github.jonnyfrick.musicbootcamp.core.practice.Evaluation
 import io.github.jonnyfrick.musicbootcamp.core.practice.StepResult
@@ -105,6 +106,11 @@ class SessionRecorder(
     /** [DetectedNote.sampleTime] counts from the same first block as this recording. */
     fun detected(note: DetectedNote) {
         audioEvents += RecordingEvent(note.sampleTime, RecordingEventType.DETECTED, listOf(note.midiNote), cents = note.cents)
+    }
+
+    /** A chord from [io.github.jonnyfrick.musicbootcamp.core.pitch.ChordTracker], logged like a note, with all its notes. */
+    fun detectedChord(chord: DetectedChord) {
+        audioEvents += RecordingEvent(chord.sampleTime, RecordingEventType.DETECTED, chord.notes)
     }
 
     fun accepted(message: MidiMessage) = exerciseEvent(RecordingEventType.ACCEPTED, listOf(message.data1))

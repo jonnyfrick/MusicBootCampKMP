@@ -141,14 +141,22 @@ class LateAnswerTest {
     }
 
     @Test
-    fun twoVoicesAreEvaluatedAtTheStepChangeAsBefore() {
+    fun aChordAnswersTheOpenStepItMatches() {
+        // With two voices a recognised chord arrives as two note-ons (a unison as the note twice).
         val settings = PracticeSettings(
             mode = PracticeMode.TWO_VOICES_PURE_RANDOM, lowLimit = 48, highLimit = 72, startPosition = 60,
         )
         val session = PracticeSession(settings, LearnedSequences(), KotlinRandomSource(Random(5))) { }
-        session.step(deferEvaluation = true)
+        val first = session.step(deferEvaluation = true).given
         val second = session.step(deferEvaluation = true)
-        assertFalse(second.evaluationPending, "late answers are for single notes (microphone input)")
+        assertTrue(second.evaluationPending)
+
+        assertEquals(emptyList(), session.onMidiInput(key(first[1])), "half a chord is no answer yet")
+        assertEquals(listOf(Evaluation(true, false)), session.onMidiInput(key(first[0])), "late, and in any order")
+
+        session.onMidiInput(key(second.given[0]))
+        session.onMidiInput(key(second.given[1] + 1))
+        assertEquals(false, session.step(deferEvaluation = true).previousCorrect, "a wrong second voice")
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)

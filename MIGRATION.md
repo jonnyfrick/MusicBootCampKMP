@@ -246,9 +246,45 @@ messages, so the exercise logic is the same as with a MIDI keyboard.
 - Tests (`PitchDetectionTest`) use synthetic piano tones with inharmonic partials, a weak bass
   fundamental and hammer noise: every note 36–96, legato, sustain pedal, repeated keys, 442 Hz
   tuning, detuning, noise. They still need to be checked against recordings of a real piano.
-- Two voices from the microphone are not supported yet (planned: harmonic-sum candidate search
-  within the known range, fallback Spotify Basic Pitch).
+- Several voices from the microphone: see "Chords from the microphone" below.
 - macOS asks for microphone permission for the app that starts the JVM (e.g. the terminal).
+
+### Chords from the microphone (exercises with several voices)
+
+A separate branch, parametrised apart from single notes (`ChordDetectionParameters`, stored per
+number of voices in `preferences.json`; editable in optimization mode when the exercise has
+several voices).
+
+- `core/pitch/ChordTracker` finds strokes with a `NoteTracker` (which also learns and removes the
+  app's own sound); strokes within `chordSpreadMillis` (80 ms) are one chord, and during a
+  chord's analysis window only a clearly louder stroke (2×) starts anew (the beating of close
+  notes looks like strokes). The spectrum is averaged over 30–300 ms after the stroke (FFT 8192,
+  Hann): the slower tempo of these exercises allows it, and it separates close partials down in
+  the bass. What rang before the stroke and the app's predicted sound are removed; a window
+  bringing less than `minNewShare` new level is no stroke.
+- `core/pitch/TemplateChordRecognizer` works on a log-frequency axis (`LogSpectrum`, 3 bins per
+  semitone). A hypothesis (a set of notes) is fitted as a non-negative mix of note templates
+  (`Nnls`, Lawson–Hanson); its score is the unexplained part plus `notePenalty` per note. The
+  hypotheses are the chords given lately and their near misses (a note ±1, ±2 semitones or an
+  octave off, or left out) plus combinations of the strongest notes of one fit with all templates
+  of the range — so the work grows about linearly with voices and range instead of with all
+  combinations (4 voices in 4 octaves: tens of hypotheses instead of 200 000).
+- `core/pitch/PianoTemplates`: a piano model (inharmonic partials, weak bass fundamental,
+  partials decaying faster the higher they are) run through the same FFT and log mapping as the
+  measurement, or the player's piano: Preferences → optimization mode → "Calibrate piano" asks
+  for every note of the range once (`PianoCalibration`, measured exactly like a chord, a slip is
+  asked again) and stores `piano-templates.json` in the data directory; notes without one use the
+  nearest learned note (within 6 semitones) moved along the log axis.
+- A recognised chord goes to the exercise as one note-on per voice (a unison or a missing note
+  repeats a note), so the two-voice corrector evaluates it unchanged; with a late-answer
+  tolerance the open-step queue takes a chord as one answer. Until the app's sound is removed,
+  `OwnSoundGate.acceptsChord` ignores a chord whose notes could all be the app's own.
+- Recordings log the voices, the range and the chord parameters; `RecordingReplayTest` replays
+  them by chord (`-Pmusicbootcamp.templates=…` for a calibration, `played=4=60+67`, `sweep=true`).
+- Tests (`ChordRecognitionTest`, synthetic piano): 149 of 150 intervals up to two octaves from
+  C2 (the exception: a fifth deep in the bass read an octave high — the calibration is meant for
+  such cases), wrong chords recognised as played, unison, triads, chords over the app's own
+  chords with room echo, calibration. Not yet checked against a real piano.
 
 ## Storage
 

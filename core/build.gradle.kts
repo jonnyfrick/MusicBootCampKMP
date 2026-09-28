@@ -52,7 +52,7 @@ kotlin {
 // `-Pmusicbootcamp.recordings=<folder or .wav>` replays recorded sessions in RecordingReplayTest.
 val recordingsOverride = providers.gradleProperty("musicbootcamp.recordings")
 tasks.withType<Test>().configureEach {
-    for (name in listOf("recordings", "played", "parameters", "sweep")) {
+    for (name in listOf("recordings", "played", "parameters", "sweep", "templates")) {
         providers.gradleProperty("musicbootcamp.$name").orNull?.let { systemProperty("musicbootcamp.$name", it) }
     }
     testLogging.showStandardStreams = recordingsOverride.isPresent

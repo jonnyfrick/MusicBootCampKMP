@@ -21,6 +21,10 @@ import androidx.compose.ui.unit.dp
 import io.github.jonnyfrick.musicbootcamp.core.midi.NoteNames
 import io.github.jonnyfrick.musicbootcamp.core.persistence.OPTIMIZATION_STEP_RANGE
 import io.github.jonnyfrick.musicbootcamp.core.pitch.DetectionParameters
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.OutlinedButton
+import io.github.jonnyfrick.musicbootcamp.core.pitch.ChordDetectionParameters
 import kotlin.math.roundToInt
 
 /** One tunable detection parameter: a slider from [range] in [step]s. */
@@ -60,6 +64,36 @@ private val parameterSliders = listOf(
         { it.followUpRise }, { p, v -> p.copy(followUpRise = v) }),
 )
 
+private class ChordSlider(
+    val label: String,
+    val hint: String,
+    val range: ClosedFloatingPointRange<Double>,
+    val step: Double,
+    val get: (ChordDetectionParameters) -> Double,
+    val set: (ChordDetectionParameters, Double) -> ChordDetectionParameters,
+)
+
+private val chordSliders = listOf(
+    ChordSlider("Window end", "How long after a stroke the spectrum is averaged (ms): longer separates bass notes better.",
+        200.0..600.0, 25.0, { it.windowEndMillis.toDouble() }, { p, v -> p.copy(windowEndMillis = v.roundToInt()) }),
+    ChordSlider("Chord spread", "Strokes this close together (ms) are one chord.", 20.0..200.0, 10.0,
+        { it.chordSpreadMillis.toDouble() }, { p, v -> p.copy(chordSpreadMillis = v.roundToInt()) }),
+    ChordSlider("Note penalty", "Higher: prefers fewer notes (against extra notes; too high misses notes).", 0.0..0.1, 0.005,
+        { it.notePenalty }, { p, v -> p.copy(notePenalty = v) }),
+    ChordSlider("Min. note share", "A note must carry this share of a chord's energy to count.", 0.01..0.3, 0.01,
+        { it.minNoteShare }, { p, v -> p.copy(minNoteShare = v) }),
+    ChordSlider("Given bias", "Above 0 leans towards \"played as given\" (fewer false mistakes, more missed ones).", 0.0..0.1, 0.005,
+        { it.givenBias }, { p, v -> p.copy(givenBias = v) }),
+    ChordSlider("Background weight", "How much of what rang before the stroke is removed.", 0.0..2.0, 0.1,
+        { it.backgroundWeight }, { p, v -> p.copy(backgroundWeight = v) }),
+    ChordSlider("Min. new share", "Share of the level that must be new (against beating of close notes).", 0.0..0.8, 0.05,
+        { it.minNewShare }, { p, v -> p.copy(minNewShare = v) }),
+    ChordSlider("Noise gate", "Minimum level of a stroke (RMS, full scale 1).", 0.002..0.05, 0.002,
+        { it.strokes.noiseGate }, { p, v -> p.copy(strokes = p.strokes.copy(noiseGate = v)) }),
+    ChordSlider("Onset ratio", "How much a stroke must raise the level above the hops before it.", 1.2..4.0, 0.1,
+        { it.strokes.onsetRatio }, { p, v -> p.copy(strokes = p.strokes.copy(onsetRatio = v)) }),
+)
+
 /** Preferences → Microphone: runs of a fixed length, always recorded, with the detection parameters editable. */
 @Composable
 internal fun OptimizationSettings(controller: AppController) {
@@ -88,6 +122,11 @@ internal fun OptimizationSettings(controller: AppController) {
         Text("${preferences.optimizationSteps} notes", Modifier.width(90.dp))
     }
 
+    val voices = controller.settings.mode.voices
+    if (voices > 1) {
+        ChordSettings(controller, voices)
+        return
+    }
     val parameters = preferences.detectionParameters
     Row(verticalAlignment = Alignment.CenterVertically) {
         Switch(
@@ -119,6 +158,88 @@ internal fun OptimizationSettings(controller: AppController) {
     }
     TextButton(onClick = { controller.setDetectionParameters(DetectionParameters()) }, enabled = !running) {
         Text("Reset to defaults")
+    }
+}
+
+/** The chord recognition's parameters for [voices] voices, and the calibration of the piano. */
+@Composable
+private fun ChordSettings(controller: AppController, voices: Int) {
+    val running = controller.running || controller.calibrating
+    val parameters = controller.preferences.chordParameters(voices)
+    Hint("Chord recognition for $voices voices (the Exercise tab's mode); set apart from single notes.")
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Switch(
+            checked = parameters.strokes.echoCancellation,
+            onCheckedChange = { controller.setChordDetectionParameters(voices, parameters.copy(strokes = parameters.strokes.copy(echoCancellation = it))) },
+            enabled = !running,
+        )
+        Spacer(Modifier.width(12.dp))
+        Text("Remove the app's own sound")
+    }
+    for (slider in chordSliders) {
+        val value = slider.get(parameters)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(slider.label, Modifier.width(140.dp))
+            Slider(
+                value = value.toFloat(),
+                onValueChange = { raw ->
+                    val snapped = slider.range.start + ((raw - slider.range.start) / slider.step).roundToInt() * slider.step
+                    controller.setChordDetectionParameters(voices, slider.set(parameters, snapped.coerceIn(slider.range)))
+                },
+                valueRange = slider.range.start.toFloat()..slider.range.endInclusive.toFloat(),
+                enabled = !running,
+                modifier = Modifier.weight(1f),
+            )
+            Text(format(value), Modifier.width(90.dp))
+        }
+        Hint(slider.hint)
+    }
+    TextButton(onClick = { controller.setChordDetectionParameters(voices, ChordDetectionParameters()) }, enabled = !running) {
+        Text("Reset to defaults")
+    }
+    CalibrationSettings(controller)
+}
+
+/** Learning the player's piano: every note of the range once. */
+@Composable
+private fun CalibrationSettings(controller: AppController) {
+    val settings = controller.settings
+    val learned = controller.learnedTemplates.notes.size
+    Spacer(Modifier.height(8.dp))
+    Text("Piano calibration", style = MaterialTheme.typography.titleSmall)
+    Hint(
+        (if (learned == 0) "Not calibrated: the chord recognition uses a piano model. " else "$learned notes learned from your piano. ") +
+            "Calibrating asks for every note of the range " +
+            "(${NoteNames.displayName(settings.lowLimit)} – ${NoteNames.displayName(settings.highLimit)}) once: " +
+            "play each alone, with the sustain pedal up; the app plays nothing meanwhile.",
+    )
+    if (controller.calibrating) {
+        val (done, total) = controller.calibrationProgress
+        Card(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+            Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    controller.calibrationTarget?.let { "Play ${NoteNames.displayName(it)}" } ?: "Done",
+                    style = MaterialTheme.typography.displaySmall,
+                )
+                Text("$done of $total", style = MaterialTheme.typography.bodyMedium)
+                controller.calibrationHeard?.let { heard ->
+                    Text(
+                        "Heard ${heard.joinToString(" ") { NoteNames.displayName(it) }} – please play the asked note again.",
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+                LinearProgressIndicator(
+                    progress = { (controller.microphoneLevel * 5).toFloat().coerceIn(0f, 1f) },
+                    modifier = Modifier.width(160.dp).padding(top = 8.dp),
+                )
+            }
+        }
+        OutlinedButton(onClick = controller::stopCalibration) { Text("Stop calibration") }
+    } else {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedButton(onClick = controller::startCalibration, enabled = !controller.running) { Text("Calibrate piano") }
+            if (learned > 0) TextButton(onClick = { controller.forgetCalibration() }, enabled = !controller.running) { Text("Forget calibration") }
+        }
     }
 }
 

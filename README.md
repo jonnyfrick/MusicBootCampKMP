@@ -3,7 +3,7 @@
 Ear training at the MIDI keyboard. The app plays a note or two-voice chord, and you play it back on
 your keyboard. Mistakes are remembered as short sequences and come back until you master them.
 Input comes from a MIDI keyboard or, on the desktop, from an acoustic piano via the microphone
-(pitch detection, single notes).
+(pitch detection for single notes, chord recognition for exercises with several voices).
 
 Kotlin Multiplatform / Compose Multiplatform port of the original Java/Swing application. For what
 changed and how the port was verified, see [MIGRATION.md](MIGRATION.md).

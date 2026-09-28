@@ -1,6 +1,9 @@
 package io.github.jonnyfrick.musicbootcamp.core.pitch
 
+import io.github.jonnyfrick.musicbootcamp.core.midi.MidiMessage
 import io.github.jonnyfrick.musicbootcamp.core.midi.Tuning
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.max
@@ -182,3 +185,31 @@ class ChordTracker(
         val HANN_ENERGY = HANN.sumOf { it * it } / FFT_SIZE * FFT_SIZE
     }
 }
+
+/** Microphone blocks (with what the app played) → recognised chords; see [ChordTracker]. */
+fun Flow<AudioBlock>.detectedChords(
+    sampleRate: Int,
+    voices: Int,
+    range: IntRange,
+    referenceAHz: Double,
+    parameters: ChordDetectionParameters = ChordDetectionParameters(),
+    learned: LearnedTemplates = LearnedTemplates(),
+    expected: () -> List<List<Int>> = { emptyList() },
+    onLevel: (Double) -> Unit = {},
+): Flow<DetectedChord> = flow {
+    val tracker = ChordTracker(sampleRate, voices, range, referenceAHz, parameters, learned, expected)
+    collect { block ->
+        val chords = tracker.process(block.microphone, block.reference)
+        onLevel(tracker.level)
+        chords.forEach { emit(it) }
+    }
+}
+
+/**
+ * A chord as the note-ons a MIDI keyboard would send: one per voice, so a unison (or a chord
+ * missing a note) repeats its note — the exercise evaluates [voices] key presses per step.
+ */
+fun DetectedChord.toNoteOns(voices: Int): List<MidiMessage> =
+    List(voices) { i -> notes.getOrElse(i) { notes.last() } }.map { MidiMessage.noteOn(it, DETECTED_CHORD_VELOCITY) }
+
+private const val DETECTED_CHORD_VELOCITY = 100

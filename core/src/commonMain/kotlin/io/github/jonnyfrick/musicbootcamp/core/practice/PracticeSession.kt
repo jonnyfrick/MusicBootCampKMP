@@ -64,6 +64,9 @@ class PracticeSession(
     private val open = ArrayDeque<OpenStep>()
     private var deferring = false
 
+    /** Notes of the last steps given up unanswered: a key press for one of them came too late. */
+    private val missedLately = ArrayDeque<Int>()
+
     private class OpenStep(val number: Int, val given: Int) {
         var answer: Int? = null
         /** Answered, or given up (its time is over, or a later step got the answer). */
@@ -86,7 +89,13 @@ class PracticeSession(
         val waiting = open.filter { !it.resolved }
         if (waiting.isEmpty()) return emptyList() // only the first key press of a step counts
         val note = message.data1
-        val target = waiting.firstOrNull { it.given == note } ?: waiting.first()
+        val matching = waiting.firstOrNull { it.given == note }
+        // Just too late for its own step: it must not take the answer of the next one.
+        if (matching == null && note in missedLately) {
+            missedLately.remove(note)
+            return emptyList()
+        }
+        val target = matching ?: waiting.first()
         for (step in waiting) {
             if (step === target) break
             step.resolved = true // missed
@@ -170,6 +179,10 @@ class PracticeSession(
     }
 
     private fun evaluateStep(step: OpenStep): Evaluation {
+        if (step.answer == null) {
+            missedLately.addLast(step.given)
+            if (missedLately.size > MISSED_REMEMBERED) missedLately.removeFirst()
+        }
         corrector.addGiven(step.given)
         corrector.resetRecorded()
         step.answer?.let { corrector.addRecorded(it) }
@@ -199,5 +212,9 @@ class PracticeSession(
             corrector.resetGiven()
             given.forEach { corrector.addGiven(it) }
         }
+    }
+
+    private companion object {
+        const val MISSED_REMEMBERED = 2
     }
 }

@@ -125,6 +125,22 @@ class LateAnswerTest {
     }
 
     @Test
+    fun aStrokeJustTooLateDoesNotTakeTheNextAnswer() {
+        // Found live: an answer 13 ms after its tolerance answered the next step, and every later
+        // answer then counted for the step after its own.
+        val session = PracticeSession(mono, LearnedSequences(), KotlinRandomSource(Random(3))) { }
+        val given = mutableListOf<Int>()
+        given += session.step(deferEvaluation = true).given.single()
+        val second = session.step(deferEvaluation = true)
+        given += second.given.single()
+        assertEquals(listOf(Evaluation(false, false)), session.expire(second.openStep!!))
+
+        assertEquals(emptyList(), session.onMidiInput(key(given[0])), "too late for the first step, ignored")
+        session.onMidiInput(key(given[1]))
+        assertEquals(true, session.step(deferEvaluation = true).previousCorrect, "the second step keeps its own answer")
+    }
+
+    @Test
     fun twoVoicesAreEvaluatedAtTheStepChangeAsBefore() {
         val settings = PracticeSettings(
             mode = PracticeMode.TWO_VOICES_PURE_RANDOM, lowLimit = 48, highLimit = 72, startPosition = 60,

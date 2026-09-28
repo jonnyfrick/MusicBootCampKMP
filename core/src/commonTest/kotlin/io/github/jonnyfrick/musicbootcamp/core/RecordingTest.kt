@@ -10,7 +10,10 @@ import io.github.jonnyfrick.musicbootcamp.core.pitch.DetectionParameters
 import io.github.jonnyfrick.musicbootcamp.core.pitch.detectionParametersFromJson
 import io.github.jonnyfrick.musicbootcamp.core.pitch.toJson
 import io.github.jonnyfrick.musicbootcamp.core.midi.MidiMessage
+import io.github.jonnyfrick.musicbootcamp.core.persistence.DETECTION_PARAMETERS_REVISION
+import io.github.jonnyfrick.musicbootcamp.core.persistence.InMemoryDocumentStore
 import io.github.jonnyfrick.musicbootcamp.core.persistence.SetupRepository
+import kotlinx.coroutines.test.runTest
 import io.github.jonnyfrick.musicbootcamp.core.pitch.DetectedNote
 import io.github.jonnyfrick.musicbootcamp.core.practice.Evaluation
 import io.github.jonnyfrick.musicbootcamp.core.practice.StepResult
@@ -115,5 +118,19 @@ class RecordingTest {
         val tuned = DetectionParameters(rawRise = 1.3, echoCancellation = false)
         assertEquals(tuned, detectionParametersFromJson(tuned.toJson()))
         assertEquals(DetectionParameters(rawRise = 1.3), detectionParametersFromJson("""{"rawRise":1.3}"""))
+    }
+
+    @Test
+    fun detectionParametersFromOlderDefaultsAreReset() = runTest {
+        val store = InMemoryDocumentStore()
+        val repository = SetupRepository(store)
+        // As written before the revision existed, with a default that was changed since.
+        store.write("preferences.json", """{"version":1,"detectionParameters":{"fallbackMargin":2.0,"rawRise":1.3}}""")
+        val loaded = repository.loadPreferences()
+        assertEquals(DetectionParameters(), loaded.detectionParameters)
+        assertEquals(DETECTION_PARAMETERS_REVISION, loaded.detectionParametersRevision)
+
+        repository.savePreferences(loaded.copy(detectionParameters = DetectionParameters(rawRise = 1.3)))
+        assertEquals(DetectionParameters(rawRise = 1.3), repository.loadPreferences().detectionParameters, "current ones stay")
     }
 }

@@ -90,7 +90,15 @@ data class AppPreferences(
     val optimizationMode: Boolean = false,
     val optimizationSteps: Int = DEFAULT_OPTIMIZATION_STEPS,
     val detectionParameters: DetectionParameters = DetectionParameters(),
+    /**
+     * Which defaults [detectionParameters] were tuned against; older ones are reset on loading, so
+     * a value a later version changed its mind about does not linger (see [SetupRepository.loadPreferences]).
+     */
+    val detectionParametersRevision: Int = 0,
 )
+
+/** Raise when the defaults of [DetectionParameters] change in a way stored values should follow. */
+const val DETECTION_PARAMETERS_REVISION = 1
 
 const val DEFAULT_OPTIMIZATION_STEPS = 12
 val OPTIMIZATION_STEP_RANGE = 5..50

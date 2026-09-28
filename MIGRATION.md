@@ -144,7 +144,8 @@ off-screen into `app/desktopApp/build/screenshots` and runs an exercise against 
   = true)`, `PracticeRunner(lateAnswerTolerance = …)`); at a fast tempo several steps can be open.
   A key press answers the oldest open step — or, if it is exactly the note of a later open step,
   that one, and the older ones count as missed, so a skipped note or a false stroke does not shift
-  all later answers by a step. (At first the tolerance was capped at half the step period and only
+  all later answers by a step; a key press that is the note of a step just given up (too late) and
+  of no open one is ignored for the same reason. (At first the tolerance was capped at half the step period and only
   the previous step could be answered; at 0.7 s breathing time answers 1.2 s after their note were
   then lost.) The next note still starts on time. A step answered in time is
   evaluated at once as before, so the exercise and the random numbers consumed are unchanged; only
@@ -225,6 +226,9 @@ messages, so the exercise logic is the same as with a MIDI keyboard.
   removed, the WAV has a second channel with what the loudspeaker played. Exercise events are placed at
   the end of the audio received so far (±1 block). `RecordingReplayTest` replays them through
   `NoteTracker` (see README). Recordings are personal data: never commit them.
+- `preferences.json` stores the detection parameters with `detectionParametersRevision`; values
+  from an older revision are reset to the current defaults on loading, so a default changed later
+  (e.g. `fallbackMargin` 2 → 0) does not linger.
 - Optimization mode (Preferences → Microphone): every exercise stops by itself after n notes
   (`PracticeRunner(maxSteps = …)`; no next note follows the last one, so its answer may come up
   to one step period after the tolerance)

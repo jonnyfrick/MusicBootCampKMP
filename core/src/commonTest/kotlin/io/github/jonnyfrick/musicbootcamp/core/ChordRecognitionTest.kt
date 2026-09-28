@@ -1,5 +1,7 @@
 package io.github.jonnyfrick.musicbootcamp.core
 
+import io.github.jonnyfrick.musicbootcamp.core.pitch.ChordDetectionParameters
+import io.github.jonnyfrick.musicbootcamp.core.pitch.ChordMethod
 import io.github.jonnyfrick.musicbootcamp.core.pitch.ChordTracker
 import io.github.jonnyfrick.musicbootcamp.core.pitch.DetectedChord
 import io.github.jonnyfrick.musicbootcamp.core.pitch.PianoCalibration
@@ -13,13 +15,21 @@ class ChordRecognitionTest {
     private val sampleRate = 44_100
 
     /** The notes struck together (10 ms apart, as fingers are) at [start]. */
-    private fun addChord(buffer: FloatArray, notes: List<Int>, start: Double, duration: Double = 0.8, seed: Int = 0) {
+    private fun addChord(
+        buffer: FloatArray,
+        notes: List<Int>,
+        start: Double,
+        duration: Double = 0.8,
+        seed: Int = 0,
+        colour: (Double) -> Double = { 1.0 },
+    ) {
         notes.forEachIndexed { i, note ->
-            addPianoStroke(buffer, note, startSeconds = start + i * 0.01, durationSeconds = duration, seed = seed + note * 3 + i)
+            addPianoStroke(buffer, note, startSeconds = start + i * 0.01, durationSeconds = duration, seed = seed + note * 3 + i, colour = colour)
         }
     }
 
-    private fun chord(notes: List<Int>) = FloatArray((1.2 * sampleRate).toInt()).also { addChord(it, notes, start = 0.2) }
+    private fun chord(notes: List<Int>, colour: (Double) -> Double = { 1.0 }) =
+        FloatArray((1.2 * sampleRate).toInt()).also { addChord(it, notes, start = 0.2, colour = colour) }
 
     private fun recognize(
         microphone: FloatArray,
@@ -27,9 +37,10 @@ class ChordRecognitionTest {
         expected: (Double) -> List<List<Int>>,
         range: IntRange = 36..84,
         reference: FloatArray? = null,
+        parameters: ChordDetectionParameters = ChordDetectionParameters(),
     ): List<DetectedChord> {
         var seconds = 0.0
-        val tracker = ChordTracker(sampleRate, voices, range, expected = { expected(seconds) })
+        val tracker = ChordTracker(sampleRate, voices, range, parameters = parameters, expected = { expected(seconds) })
         return microphone.indices.chunked(512).flatMap { block ->
             seconds = block.first().toDouble() / sampleRate
             val r = block.first()..block.last()
@@ -145,5 +156,25 @@ class ChordRecognitionTest {
         buffer.indices.chunked(512).forEach { calibration.process(buffer.sliceArray(it.first()..it.last())) }
         assertEquals(null, calibration.target)
         assertEquals(setOf(48), calibration.result().notes.keys)
+    }
+
+    @Test
+    fun theHarmonicMethodCopesWithTheRoomsColouring() {
+        // A room and microphone position change single partials by up to ±10 dB; which partials
+        // are there does not change. Octave errors count as right, as they do in the app.
+        for (seed in 1..3) {
+            val colour = roomColour(seed)
+            val failures = mutableListOf<String>()
+            for (low in listOf(36, 43, 48, 55, 60, 67)) {
+                for (interval in 0..24) {
+                    val notes = listOf(low, low + interval)
+                    val found = recognize(chord(notes.distinct(), colour), 2, { listOf(notes) }).map { it.notes }
+                    if (found != listOf(notes.distinct()) && (found.size != 1 || matchIgnoringOctaves(found.single(), listOf(notes)) == null)) {
+                        failures += "$notes -> $found"
+                    }
+                }
+            }
+            assertTrue(failures.size <= 10, "room $seed: ${failures.size} of 150: $failures")
+        }
     }
 }

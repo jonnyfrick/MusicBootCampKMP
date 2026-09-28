@@ -281,6 +281,21 @@ several voices).
   of the asked pitch class counts in any octave — the model heard a real C3 as C4 —, another
   note is asked again) and stores `piano-templates.json` in the data directory; notes without one use the
   nearest learned note (within 6 semitones) moved along the log axis.
+- `core/pitch/HarmonicChordRecognizer` (the default, `method = HARMONIC`): tells chords apart
+  by **where** partials are, not how strong — the room and the microphone's position change single
+  partials by many dB (the player's measurements; in the recordings the fundamental/second-partial
+  ratio jumped from key to key). The log spectrum is divided by its envelope (levelling out the
+  colouring); a chord's score is the share of clear peaks its partials explain (shared partials
+  once) beyond chance (`chanceWeight` × the share of the spectrum its partials cover — a deep
+  note's dense comb catches peaks by chance), minus `missingPenalty` per needed partial that is
+  missing (C3 needs its odd partials, which C4 lacks: octaves without strengths). If an expected
+  chord is the best one plus notes lying entirely on its partials (a twelfth), the expected one is
+  taken. A calibration only tells which of partials 1–6 a note shows. Compared with the templates
+  (synthetic, octave errors counted as right as in the app): 150 / 146 / 145 / 144 of 150 without
+  and with three simulated room colourings (±10 dB) against 150 / 136 / 127 / 131; on real strokes
+  207 single notes right with no octave error against 150 with 53 (model templates), and a real
+  two-voice run 9 of 12 against 8 (templates learned from the player's piano), the rest being
+  heard alike by both.
 - A recognised chord goes to the exercise as one note-on per voice (a unison or a missing note
   repeats a note), so the two-voice corrector evaluates it unchanged; with a late-answer
   tolerance the open-step queue takes a chord as one answer. Until the app's sound is removed,

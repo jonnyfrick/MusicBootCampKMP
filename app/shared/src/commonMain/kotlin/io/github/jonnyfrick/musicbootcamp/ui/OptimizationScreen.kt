@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
 import io.github.jonnyfrick.musicbootcamp.core.pitch.ChordDetectionParameters
+import io.github.jonnyfrick.musicbootcamp.core.pitch.ChordMethod
 import kotlin.math.roundToInt
 
 /** One tunable detection parameter: a slider from [range] in [step]s. */
@@ -88,6 +89,14 @@ private val chordSliders = listOf(
         { it.backgroundWeight }, { p, v -> p.copy(backgroundWeight = v) }),
     ChordSlider("Min. new share", "Share of the level that must be new (against beating of close notes).", 0.0..0.8, 0.05,
         { it.minNewShare }, { p, v -> p.copy(minNewShare = v) }),
+    ChordSlider("Whitening width", "Harmonic: width (semitones) of the envelope that levels out the room's colouring.", 2.0..14.0, 1.0,
+        { it.whitenSemitones }, { p, v -> p.copy(whitenSemitones = v) }),
+    ChordSlider("Presence", "Harmonic: a partial counts as there this many times above its surroundings.", 1.1..3.0, 0.1,
+        { it.presence }, { p, v -> p.copy(presence = v) }),
+    ChordSlider("Missing penalty", "Harmonic: per expected partial that is not there (settles octaves).", 0.0..0.2, 0.01,
+        { it.missingPenalty }, { p, v -> p.copy(missingPenalty = v) }),
+    ChordSlider("Chance weight", "Harmonic: how much a deep note's dense partials are discounted for catching peaks by chance.", 0.0..1.0, 0.05,
+        { it.chanceWeight }, { p, v -> p.copy(chanceWeight = v) }),
     ChordSlider("Noise gate", "Minimum level of a stroke (RMS, full scale 1).", 0.002..0.05, 0.002,
         { it.strokes.noiseGate }, { p, v -> p.copy(strokes = p.strokes.copy(noiseGate = v)) }),
     ChordSlider("Onset ratio", "How much a stroke must raise the level above the hops before it.", 1.2..4.0, 0.1,
@@ -169,6 +178,19 @@ private fun ChordSettings(controller: AppController, voices: Int) {
     Hint("Chord recognition for $voices voices (the Exercise tab's mode); set apart from single notes.")
     Row(verticalAlignment = Alignment.CenterVertically) {
         Switch(
+            checked = parameters.method == ChordMethod.HARMONIC,
+            onCheckedChange = { controller.setChordDetectionParameters(voices, parameters.copy(method = if (it) ChordMethod.HARMONIC else ChordMethod.TEMPLATES)) },
+            enabled = !running,
+        )
+        Spacer(Modifier.width(12.dp))
+        Text("Harmonic method")
+    }
+    Hint(
+        "On: which partials are there, after levelling out the room (robust to where the microphone stands). " +
+            "Off: how the spectrum's shape matches note templates (partial strengths; best right after a calibration).",
+    )
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Switch(
             checked = parameters.strokes.echoCancellation,
             onCheckedChange = { controller.setChordDetectionParameters(voices, parameters.copy(strokes = parameters.strokes.copy(echoCancellation = it))) },
             enabled = !running,
@@ -211,7 +233,8 @@ private fun CalibrationSettings(controller: AppController) {
         (if (learned == 0) "Not calibrated: the chord recognition uses a piano model. " else "$learned notes learned from your piano. ") +
             "Calibrating asks for every note of the range " +
             "(${NoteNames.displayName(settings.lowLimit)} – ${NoteNames.displayName(settings.highLimit)}) once: " +
-            "play each alone, with the sustain pedal up; the app plays nothing meanwhile.",
+            "play each alone, with the sustain pedal up; the app plays nothing meanwhile. The harmonic method only " +
+            "takes from it which low partials a note shows (e.g. no fundamental deep in the bass).",
     )
     if (controller.calibrating) {
         val (done, total) = controller.calibrationProgress

@@ -26,6 +26,8 @@ internal fun addPianoStroke(
     loudness: Double = 0.3,
     seed: Int = midiNote,
     sampleRate: Int = 44_100,
+    /** Gain by frequency (room and microphone colouring), 1 = none. */
+    colour: (Double) -> Double = { 1.0 },
 ) {
     val f0 = referenceAHz * 2.0.pow((midiNote - 69 + detuneCents / 100) / 12)
     // Inharmonicity grows towards the treble (typical B from ~0.0001 to ~0.002).
@@ -44,7 +46,7 @@ internal fun addPianoStroke(
         for (n in 1..16) {
             val fn = n * f0 * sqrt(1 + b * n * n)
             if (fn >= sampleRate / 2) break
-            val amplitude = (if (n == 1) fundamentalWeight else 1.0) / n
+            val amplitude = (if (n == 1) fundamentalWeight else 1.0) / n * colour(fn)
             value += amplitude * exp(-t * (1.2 + 0.6 * n)) * sin(2 * PI * fn * t + phases[n - 1])
         }
         // Hammer noise during the first 4 ms.
@@ -80,4 +82,19 @@ internal fun roomEcho(reference: FloatArray, delaySamples: Int, gain: Double, se
         echo[n] = (gain * value + (random.nextDouble() - 0.5) * 0.002).toFloat()
     }
     return echo
+}
+
+/**
+ * A room's and microphone's colouring: a gain changing smoothly with frequency by about
+ * ±[decibels] dB (partials of different notes at the same frequency get the same gain).
+ */
+internal fun roomColour(seed: Int, decibels: Double = 10.0): (Double) -> Double {
+    val random = Random(seed)
+    val waves = List(6) { Triple(random.nextDouble(0.5, 4.0), random.nextDouble(2 * PI), random.nextDouble(0.3, 1.0)) }
+    val norm = waves.sumOf { it.third }
+    return { frequency ->
+        val octaves = kotlin.math.ln(frequency / 50.0) / kotlin.math.ln(2.0)
+        val db = decibels * waves.sumOf { (rate, phase, weight) -> weight * sin(2 * PI * rate * octaves + phase) } / norm * 1.7
+        10.0.pow(db / 20)
+    }
 }

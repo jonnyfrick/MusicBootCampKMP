@@ -1,6 +1,39 @@
 package io.github.jonnyfrick.musicbootcamp.core.pitch
 
-/** What [TemplateChordRecognizer] decided for one stroke. */
+/** Tells which notes a chord consists of, from its magnitude spectrum on the log axis ([LogSpectrum]). */
+interface ChordRecognizer {
+    /**
+     * The chord of up to [voices] notes that best explains [spectrum]; [expected] are the chords
+     * the player may be answering right now (tested together with their near misses).
+     */
+    fun recognize(spectrum: DoubleArray, voices: Int, expected: List<List<Int>>): RecognizedChord?
+}
+
+/** The hypotheses worth testing: the expected chords, their near misses, combinations of [strongest]. */
+internal fun chordHypotheses(strongest: List<Int>, voices: Int, expected: List<List<Int>>, range: IntRange): Set<List<Int>> {
+    fun subsets(items: List<Int>, size: Int): List<List<Int>> = when {
+        size == 0 -> listOf(emptyList())
+        items.size < size -> emptyList()
+        else -> subsets(items.drop(1), size - 1).map { listOf(items[0]) + it } + subsets(items.drop(1), size)
+    }
+    val hypotheses = mutableSetOf<List<Int>>()
+    for (size in 1..voices) subsets(strongest, size).forEach { hypotheses += it.sorted() }
+    for (chord in expected.map { it.distinct().sorted() }.filter { it.isNotEmpty() }) {
+        hypotheses += chord
+        for (i in chord.indices) {
+            if (chord.size > 1) hypotheses += (chord - chord[i]).sorted()
+            for (step in listOf(-12, -2, -1, 1, 2, 12)) {
+                val moved = chord[i] + step
+                // Only within the range: which wrong chord it was does not matter, and outside it the
+                // octave ambiguity of real pianos (weak bass fundamentals) would only add errors.
+                if (moved in range && moved !in chord) hypotheses += (chord - chord[i] + moved).sorted()
+            }
+        }
+    }
+    return hypotheses
+}
+
+/** What a [ChordRecognizer] decided for one stroke. */
 data class RecognizedChord(
     /** The distinct notes, lowest first (fewer than the voices for a unison or a missing note). */
     val notes: List<Int>,
@@ -29,7 +62,7 @@ class TemplateChordRecognizer(
     private val templates: PianoTemplates,
     private val range: IntRange,
     private val parameters: ChordDetectionParameters = ChordDetectionParameters(),
-) {
+) : ChordRecognizer {
     private val dots = mutableMapOf<Long, Double>()
 
     private fun dot(a: Int, b: Int): Double {
@@ -43,11 +76,7 @@ class TemplateChordRecognizer(
         }
     }
 
-    /**
-     * The chord of up to [voices] notes that best explains [spectrum], preferring nothing but
-     * the simpler explanation; [expected] are the chords the player may be answering right now.
-     */
-    fun recognize(spectrum: DoubleArray, voices: Int, expected: List<List<Int>>): RecognizedChord? {
+    override fun recognize(spectrum: DoubleArray, voices: Int, expected: List<List<Int>>): RecognizedChord? {
         val energy = spectrum.sumOf { it * it }
         if (energy <= 0.0) return null
         val projections = mutableMapOf<Int, Double>()
@@ -65,24 +94,9 @@ class TemplateChordRecognizer(
         val total = shares.sumOf { it.second * it.second }
         val activations = shares.map { it.first to it.second * it.second / total }
 
-        val hypotheses = mutableSetOf<List<Int>>()
         val strongest = activations.take(STRONGEST).map { it.first }
-        for (size in 1..voices) subsets(strongest, size).forEach { hypotheses += it.sorted() }
-        val expectedSets = expected.map { it.distinct().sorted() }.filter { it.isNotEmpty() }.toSet()
-        for (chord in expectedSets) {
-            hypotheses += chord
-            for (i in chord.indices) {
-                if (chord.size > 1) hypotheses += (chord - chord[i]).sorted()
-                for (step in NEAR_MISSES) {
-                    val moved = chord[i] + step
-                    // Only within the range: which wrong chord it was does not matter, and outside it the
-                    // octave ambiguity of real pianos (weak bass fundamentals) would only add errors.
-                    if (moved in range && moved !in chord) {
-                        hypotheses += (chord - chord[i] + moved).sorted()
-                    }
-                }
-            }
-        }
+        val hypotheses = chordHypotheses(strongest, voices, expected, range)
+        val expectedSets = expected.map { it.distinct().sorted() }.toSet()
 
         val scored = hypotheses.mapNotNull { notes ->
             val x = fit(notes, ::projection)
@@ -102,14 +116,7 @@ class TemplateChordRecognizer(
     private fun fit(notes: List<Int>, projection: (Int) -> Double): DoubleArray =
         Nnls.solve(gram(notes), DoubleArray(notes.size) { projection(notes[it]) })
 
-    private fun subsets(items: List<Int>, size: Int): List<List<Int>> = when {
-        size == 0 -> listOf(emptyList())
-        items.size < size -> emptyList()
-        else -> subsets(items.drop(1), size - 1).map { listOf(items[0]) + it } + subsets(items.drop(1), size)
-    }
-
     private companion object {
         const val STRONGEST = 6
-        val NEAR_MISSES = listOf(-12, -2, -1, 1, 2, 12)
     }
 }

@@ -50,11 +50,11 @@ class ChordTracker(
     val templates = PianoTemplates(
         sampleRate, FFT_SIZE, referenceAHz, windowStart.toDouble() / sampleRate, windowEnd.toDouble() / sampleRate, learned,
     )
-    private val recognizer = TemplateChordRecognizer(
-        templates,
-        (range.first - RANGE_MARGIN).coerceAtLeast(LogSpectrum.LOWEST_NOTE)..(range.last + RANGE_MARGIN).coerceAtMost(LogSpectrum.HIGHEST_NOTE - 12),
-        parameters,
-    )
+    private val candidates = (range.first - RANGE_MARGIN).coerceAtLeast(LogSpectrum.LOWEST_NOTE)..(range.last + RANGE_MARGIN).coerceAtMost(LogSpectrum.HIGHEST_NOTE - 12)
+    private val recognizer: ChordRecognizer = when (parameters.method) {
+        ChordMethod.TEMPLATES -> TemplateChordRecognizer(templates, candidates, parameters)
+        ChordMethod.HARMONIC -> HarmonicChordRecognizer(candidates, parameters, learned)
+    }
 
     private val microphone = FloatArray(HISTORY_SECONDS * sampleRate)
     private val reference = FloatArray(HISTORY_SECONDS * sampleRate)

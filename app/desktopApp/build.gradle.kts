@@ -17,6 +17,8 @@ dependencies {
 compose.desktop {
     application {
         mainClass = "io.github.jonnyfrick.musicbootcamp.desktop.MainKt"
+        // GervillSynth renders Java's synthesizer itself (com.sun.media.sound.AudioSynthesizer).
+        jvmArgs += listOf("--add-exports", "java.desktop/com.sun.media.sound=ALL-UNNAMED")
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)

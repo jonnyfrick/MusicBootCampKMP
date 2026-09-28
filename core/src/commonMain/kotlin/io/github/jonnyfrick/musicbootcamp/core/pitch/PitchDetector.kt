@@ -27,7 +27,8 @@ class PitchDetector(
     private val maxFrequencyHz: Double = 4500.0,
     private val peakThreshold: Double = 0.9,
 ) {
-    private val paddedSize = nextPowerOfTwo(2 * windowSize)
+    /** FFT size of the power spectra ([detect]'s `extraBackground` must have this size). */
+    val paddedSize = nextPowerOfTwo(2 * windowSize)
     private val re = DoubleArray(paddedSize)
     private val im = DoubleArray(paddedSize)
     private val nsdf = DoubleArray(windowSize)
@@ -43,21 +44,30 @@ class PitchDetector(
      * [background] (a window recorded just before the note was struck) is removed from the
      * power spectrum first, so a previous note that is still ringing does not blend with the
      * new one into a common lower pitch (e.g. G + C read as a low C).
+     *
+     * [extraBackground] is a power spectrum to remove as well (e.g. the predicted sound of the
+     * app itself); per frequency the larger of the two is removed.
      */
-    fun detect(samples: FloatArray, background: FloatArray? = null): PitchEstimate? {
+    fun detect(samples: FloatArray, background: FloatArray? = null, extraBackground: DoubleArray? = null): PitchEstimate? {
         require(samples.size >= windowSize) { "Need $windowSize samples" }
         val offset = samples.size - windowSize
 
         if (background != null) {
             powerSpectrum(background, background.size - windowSize)
-            re.copyInto(backgroundPower)
+            for (i in 0 until paddedSize) backgroundPower[i] = BACKGROUND_WEIGHT * re[i]
+        } else {
+            backgroundPower.fill(0.0)
+        }
+        if (extraBackground != null) {
+            require(extraBackground.size == paddedSize) { "Background needs $paddedSize bins" }
+            for (i in 0 until paddedSize) backgroundPower[i] = maxOf(backgroundPower[i], extraBackground[i])
         }
 
         // Autocorrelation r(τ) = inverse FFT of the power spectrum (zero-padded, no wrap-around).
         powerSpectrum(samples, offset)
         val rawEnergy = re.sum()
-        if (background != null) {
-            for (i in 0 until paddedSize) re[i] = (re[i] - BACKGROUND_WEIGHT * backgroundPower[i]).coerceAtLeast(0.0)
+        if (background != null || extraBackground != null) {
+            for (i in 0 until paddedSize) re[i] = (re[i] - backgroundPower[i]).coerceAtLeast(0.0)
         }
         val keptEnergy = re.sum()
         if (keptEnergy <= 0.0) return null
@@ -73,7 +83,9 @@ class PitchDetector(
             val left = samples[offset + tau - 1].toDouble()
             val right = samples[offset + windowSize - tau].toDouble()
             m -= left * left + right * right
-            nsdf[tau] = if (m > 0) 2 * re[tau] / (m * energyShare) else 0.0
+            // Without a background n(τ) ≤ 1; with one removed, long lags can exceed that and would
+            // otherwise push the true first peak below the threshold (sub-octave errors).
+            nsdf[tau] = if (m > 0) (2 * re[tau] / (m * energyShare)).coerceAtMost(1.0) else 0.0
         }
 
         // Key maxima: the highest point between a positive-going and the next negative-going zero crossing.

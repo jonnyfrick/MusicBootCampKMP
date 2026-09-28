@@ -17,6 +17,7 @@ import io.github.jonnyfrick.musicbootcamp.core.midi.MidiMessage
 import io.github.jonnyfrick.musicbootcamp.core.model.PracticeMode
 import io.github.jonnyfrick.musicbootcamp.core.persistence.InputSource
 import io.github.jonnyfrick.musicbootcamp.core.persistence.MAX_LATE_ANSWER_TOLERANCE_MILLIS
+import io.github.jonnyfrick.musicbootcamp.core.pitch.AudioBlock
 import io.github.jonnyfrick.musicbootcamp.core.pitch.DetectedNote
 import io.github.jonnyfrick.musicbootcamp.core.pitch.NoteTracker
 import io.github.jonnyfrick.musicbootcamp.core.pitch.detectNotes
@@ -25,6 +26,7 @@ import io.github.jonnyfrick.musicbootcamp.platform.AudioInputPort
 import io.github.jonnyfrick.musicbootcamp.platform.MidiInputPort
 import io.github.jonnyfrick.musicbootcamp.platform.MidiOutputPort
 import io.github.jonnyfrick.musicbootcamp.platform.PlatformServices
+import io.github.jonnyfrick.musicbootcamp.platform.RenderedOutputPort
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -34,6 +36,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -335,22 +338,27 @@ class AppController(
 
     /** Opens the MIDI output (tuned) and the microphone; returns the recognised notes as note-ons. */
     private fun openMicrophoneInput(): Flow<MidiMessage> {
-        val midiOutput = openOutput()
         val audio = services.audio.open(preferences.audioInputDevice)
         closers += audio::close
-        val ownSound = if (preferences.usesHeadphones) null else OwnSoundGate(midiOutput)
+        // Without headphones the microphone hears the app. If the app renders its synthesizer
+        // itself, it knows what it played and removes that; otherwise input matching it is ignored.
+        val rendered = if (preferences.usesHeadphones) null else openRenderedOutput(audio.sampleRate)
+        val midiOutput = rendered ?: openOutput()
+        val ownSound = if (preferences.usesHeadphones || rendered != null) null else OwnSoundGate(midiOutput)
         gate = ownSound
         // The tolerance counts from the key stroke; the note arrives only once it is recognised.
         lateAnswerTolerance = preferences.lateAnswerToleranceMillis.milliseconds +
             NoteTracker(audio.sampleRate).detectionDelay
         val recording = if (preferences.recordMicrophone) {
-            services.recordings?.let { SessionRecorder(it.create(), audio.sampleRate, listOf("microphone")) }
+            val channels = if (rendered != null) listOf("microphone", "reference") else listOf("microphone")
+            services.recordings?.let { SessionRecorder(it.create(), audio.sampleRate, channels) }
         } else {
             null
         }
         recorder = recording
-        return audio.blocks
-            .onEach { recording?.audio(listOf(it)) }
+        val blocks = if (rendered != null) audio.blocksWith(rendered::playedAudio) else audio.blocks.map { AudioBlock(it) }
+        return blocks
+            .onEach { block -> recording?.audio(listOfNotNull(block.microphone, block.reference)) }
             .detectNotes(
                 audio.sampleRate, preferences.referenceAHz,
                 onNote = { recording?.detected(it) },
@@ -371,10 +379,29 @@ class AppController(
             .onFailure { message = "Could not save the recording: ${it.message}" }
     }
 
+    /**
+     * The app's own rendering of the chosen MIDI output, if it can do that (Gervill on the
+     * desktop), so its sound can be removed from the microphone signal; null otherwise.
+     */
+    private fun openRenderedOutput(sampleRate: Int): RenderedOutputPort? {
+        val synth = services.renderedSynth ?: return null
+        refreshDevices()
+        if (selectedOutputDevice() != synth.deviceName) return null
+        val port = runCatching { synth.open(sampleRate) }.getOrElse {
+            message = "The app's own sound cannot be removed (${it.message}); input matching it is ignored while it plays."
+            return null
+        }
+        output = port
+        Tuning.messages(preferences.referenceAHz).forEach(port::send)
+        return port
+    }
+
+    private fun selectedOutputDevice(): String? =
+        preferences.midiOutputDevice?.takeIf { it in outputDevices } ?: defaultDevice(outputDevices)
+
     private fun openOutput(): MidiOutputPort {
         refreshDevices()
-        val outputName = preferences.midiOutputDevice?.takeIf { it in outputDevices } ?: defaultDevice(outputDevices)
-            ?: error("No MIDI output device found.")
+        val outputName = selectedOutputDevice() ?: error("No MIDI output device found.")
         val port = services.midi.openOutput(outputName)
         output = port
         Tuning.messages(preferences.referenceAHz).forEach(port::send)

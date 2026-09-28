@@ -47,6 +47,11 @@ MIDI devices can be plugged in and out while the app runs; the device lists upda
 Preferences has a MIDI test (shows the keys arriving from your keyboard, plays a test note on the
 MIDI output) and a microphone test (level meter and recognised note).
 
+Without headphones and with "Gervill" as MIDI Out, the app renders the synthesizer itself and removes
+its own sound from the microphone signal. That needs the JVM argument
+`--add-exports java.desktop/com.sun.media.sound=ALL-UNNAMED`, which `run` and the packaged app set;
+run from elsewhere without it, the app falls back to ignoring input that matches its own note.
+
 On macOS the first microphone test asks for microphone permission for the app that started Gradle
 (Android Studio or the terminal).
 

@@ -1,5 +1,6 @@
 package io.github.jonnyfrick.musicbootcamp.desktop
 
+import io.github.jonnyfrick.musicbootcamp.core.pitch.AudioBlock
 import io.github.jonnyfrick.musicbootcamp.platform.AudioInputBackend
 import io.github.jonnyfrick.musicbootcamp.platform.AudioInputPort
 import kotlinx.coroutines.Dispatchers
@@ -47,7 +48,13 @@ class JavaSoundAudioInput : AudioInputBackend {
     private class JavaSoundAudioPort(private val line: TargetDataLine) : AudioInputPort {
         override val sampleRate: Int = SAMPLE_RATE
 
-        override val blocks: Flow<FloatArray> = flow {
+        override val blocks: Flow<FloatArray> = read { samples -> samples }
+
+        override fun blocksWith(reference: (frames: Int) -> FloatArray): Flow<AudioBlock> =
+            read { samples -> AudioBlock(samples, reference(samples.size)) }
+
+        /** Reads blocks on an IO thread; [convert] runs right after each read, on that thread. */
+        private fun <T> read(convert: (FloatArray) -> T): Flow<T> = flow {
             val bytes = ByteArray(BLOCK_FRAMES * 2)
             line.flush()
             line.start()
@@ -59,7 +66,7 @@ class JavaSoundAudioInput : AudioInputBackend {
                         val value = (bytes[2 * i].toInt() and 0xFF) or (bytes[2 * i + 1].toInt() shl 8)
                         value / 32768f
                     }
-                    emit(samples)
+                    emit(convert(samples))
                 }
             } finally {
                 line.stop()

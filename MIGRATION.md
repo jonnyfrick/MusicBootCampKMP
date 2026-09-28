@@ -177,6 +177,23 @@ messages, so the exercise logic is the same as with a MIDI keyboard.
   hop, then the pitch must agree over two windows. The window just before the stroke is removed
   from the power spectrum, so a still ringing previous note (legato, sustain pedal) does not merge
   with the new one into a lower common pitch. Latency about 50 ms. The Kammerton A is taken into account.
+- Removing the app's own sound (no headphones, "Gervill" as MIDI Out): the desktop app renders
+  Gervill itself (`desktop/GervillSynth`, via `com.sun.media.sound.AudioSynthesizer.openStream`,
+  which needs `--add-exports java.desktop/com.sun.media.sound=ALL-UNNAMED`) and plays it through
+  its own `SourceDataLine`, so it knows the samples the loudspeaker plays. The microphone port
+  pairs each block with the same number of played samples on its reading thread
+  (`AudioInputPort.blocksWith`). `core/pitch/EchoEstimator` predicts the app's sound in the
+  microphone from them, on power spectra: the delay by correlating onsets, a gain per 1/6 octave
+  as the median ratio microphone/reference (learned only while the player is not playing),
+  reverberation as a slowest decay, times 2 as a margin. `NoteTracker` then detects strokes on
+  what exceeds the prediction (and requires the total level to rise, and near the app's own
+  onsets to stand out against its sound), and `PitchDetector` removes the predicted spectrum.
+  Until the prediction is ready (a few notes into an exercise), nothing is detected while the
+  app plays. So every note counts, including the one the app is playing. With other outputs
+  `OwnSoundGate` below is used. Tests: `EchoCancellationTest` (synthetic room with reflections,
+  reverberation and noise). The NSDF is now capped at 1: after removing a background, long lags
+  could exceed it and push the true first peak below the threshold (sub-octave errors); without a
+  background it is ≤ 1 anyway.
 - `core/practice/OwnSoundGate` – without headphones the microphone hears the app's own notes.
   While an app note sounds and 200 ms after it, detected notes are ignored if they are that note
   or an octave of it (a typical detection error); other notes count. (At first all input was
@@ -190,7 +207,8 @@ messages, so the exercise logic is the same as with a MIDI keyboard.
 - Recording (Preferences → "Record exercises", off by default): `core/audio/SessionRecorder` writes
   the audio the detection gets as a WAV file and a JSON log (`RecordingLog`: app note on/off,
   steps, detected and accepted notes, evaluations, each with its sample position) to
-  `recordings/session-<date>_<time>.wav/.json` in the data directory. Exercise events are placed at
+  `recordings/session-<date>_<time>.wav/.json` in the data directory; with the app's own sound
+  removed, the WAV has a second channel with what the loudspeaker played. Exercise events are placed at
   the end of the audio received so far (±1 block). `RecordingReplayTest` replays them through
   `NoteTracker` (see README). Recordings are personal data: never commit them.
 - Desktop capture: `app/shared/src/jvmMain/.../JavaSoundAudio.kt` (javax.sound.sampled, 44.1 kHz

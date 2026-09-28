@@ -35,7 +35,12 @@ class RecordingReplayTest {
 
         val tracker = NoteTracker(audio.sampleRate, referenceA)
         val microphone = audio.channels[log?.channels?.indexOf("microphone")?.coerceAtLeast(0) ?: 0]
-        val replayed = microphone.asList().chunked(512).flatMap { tracker.process(it.toFloatArray()) }
+        // With the app's own sound recorded too, it is removed as in the live app.
+        val reference = log?.channels?.indexOf("reference")?.takeIf { it >= 0 }?.let { audio.channels[it] }
+        val replayed = (microphone.indices step 512).flatMap { start ->
+            val end = minOf(start + 512, microphone.size)
+            tracker.process(microphone.copyOfRange(start, end), reference?.copyOfRange(start, end))
+        }
 
         fun ms(sample: Long) = sample * 1000 / audio.sampleRate
         fun name(note: Int) = NoteNames.displayName(note)

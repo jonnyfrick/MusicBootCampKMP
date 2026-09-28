@@ -118,6 +118,16 @@ class PracticeSession(
         return result
     }
 
+    /**
+     * Evaluates the current step without giving a new one, to end a run of a fixed length;
+     * null before the first step. Finish a pending evaluation first ([finishEvaluation]).
+     */
+    fun end(): Evaluation? {
+        finishEvaluation()
+        if (steps == 0) return null
+        return evaluate()
+    }
+
     private fun evaluate(): Evaluation {
         val correct = corrector.correct()
         var stored = false

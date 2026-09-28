@@ -60,6 +60,19 @@ data class RecordingLog(
     val events: List<RecordingEvent>,
 )
 
+/** One step of a recorded run, so the player can say where they played something else. */
+data class StepSummary(
+    /** 1-based. */
+    val number: Int,
+    val given: List<Int>,
+    /** Notes recognised between this step's start and the next one's. */
+    val detected: List<Int>,
+    /** Of those, the ones that reached the exercise. */
+    val accepted: List<Int>,
+    /** The evaluation of this step; null if it never happened (e.g. stopped by hand). */
+    val correct: Boolean?,
+)
+
 /**
  * Records a practice session with microphone input: the audio the pitch detection gets, as a
  * WAV file, and a log of what the app played, what was recognised and how steps were evaluated.
@@ -115,13 +128,42 @@ class SessionRecorder(
 
     /** Call once the audio has stopped and the exercise has ended. */
     fun finish(info: Map<String, String>) {
-        val events = (audioEvents + exerciseEvents).sortedBy { it.sample }
+        val events = allEvents()
         val log = RecordingLog(sampleRate = sampleRate, channels = channelNames, info = info, events = events)
         file.finish(Wav.header(sampleRate, channelNames.size, bytesWritten), SetupRepository.json.encodeToString(log))
     }
+
+    /** Step by step what happened; call after [finish] (or once audio and exercise have stopped). */
+    fun summary(): List<StepSummary> = summarize(allEvents())
+
+    private fun allEvents() = (audioEvents + exerciseEvents).sortedBy { it.sample }
 
     // Exercise events happen "now": at the end of the audio received so far (one block of jitter).
     private fun exerciseEvent(type: RecordingEventType, notes: List<Int> = emptyList(), correct: Boolean? = null) {
         exerciseEvents += RecordingEvent(samplesWritten.value, type, notes, correct = correct)
     }
+}
+
+/**
+ * Groups a recording's events (sorted by sample, in logging order where equal) by step: each event
+ * belongs to the step started last before it; the n-th evaluation belongs to the n-th step.
+ */
+fun summarize(events: List<RecordingEvent>): List<StepSummary> {
+    val given = mutableListOf<List<Int>>()
+    val detected = mutableListOf<MutableList<Int>>()
+    val accepted = mutableListOf<MutableList<Int>>()
+    for (event in events) {
+        when (event.type) {
+            RecordingEventType.STEP -> {
+                given += event.notes
+                detected += mutableListOf<Int>()
+                accepted += mutableListOf<Int>()
+            }
+            RecordingEventType.DETECTED -> detected.lastOrNull()?.addAll(event.notes)
+            RecordingEventType.ACCEPTED -> accepted.lastOrNull()?.addAll(event.notes)
+            else -> Unit
+        }
+    }
+    val evaluations = events.filter { it.type == RecordingEventType.EVALUATION }.map { it.correct }
+    return given.indices.map { i -> StepSummary(i + 1, given[i], detected[i], accepted[i], evaluations.getOrNull(i)) }
 }

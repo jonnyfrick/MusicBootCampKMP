@@ -33,6 +33,8 @@ data class PracticeStatus(
     val storedMistakes: Int = 0,
     val given: List<Int> = emptyList(),
     val lastCorrect: Boolean? = null,
+    /** A run with a fixed number of notes has given and evaluated all of them. */
+    val finished: Boolean = false,
 )
 
 /**
@@ -55,6 +57,8 @@ class PracticeRunner(
     private val input: Flow<MidiMessage>,
     random: RandomSource = KotlinRandomSource(),
     lateAnswerTolerance: Duration = Duration.ZERO,
+    /** Ends the run after this many notes (the last one is still evaluated); null = until stopped. */
+    private val maxSteps: Int? = null,
     /** Called on the session dispatcher after every step, e.g. to log it. */
     private val onStep: (StepResult) -> Unit = {},
     /** Called on the session dispatcher for every late [Evaluation]. */
@@ -77,8 +81,17 @@ class PracticeRunner(
         }
         val clockJob = scope.launch(sessionDispatcher) {
             // Like Timer.schedule(task, 0, period): first step immediately, then fixed delay.
+            var given = 0
             while (isActive) {
                 session.finishEvaluation()?.let(::report)
+                if (maxSteps != null && given >= maxSteps) {
+                    // Like a late answer to a step change, the last note may be answered a bit late.
+                    delay(tolerance)
+                    session.end()?.let(::report)
+                    _status.update { it.copy(finished = true) }
+                    break
+                }
+                given++
                 val result = session.step(deferEvaluation = tolerance > Duration.ZERO)
                 result.startedNotes.forEach { note ->
                     launch {

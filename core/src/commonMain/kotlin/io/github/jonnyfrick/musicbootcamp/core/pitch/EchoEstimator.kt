@@ -19,9 +19,9 @@ import kotlin.math.sqrt
  *   microphone / reference, learned only while the player is not playing. A stroke shows as a
  *   level jump in the microphone without one in the reference; learning pauses after it, so a
  *   missed stroke cannot raise the gain and hide the next one. Far outliers are ignored.
- * - Room reverberation: the prediction decays by [REVERB_DECAY] per hop at the slowest.
+ * - Room reverberation: the prediction decays by [reverbDecay] per hop at the slowest.
  *
- * The prediction is scaled by [OVER_SUBTRACTION] as a safety margin. Until the delay is known
+ * The prediction is scaled by [overSubtraction] as a safety margin. Until the delay is known
  * and the gains have settled ([ready]), callers should ignore input while the reference is
  * active ([referenceActive]), like without echo cancellation.
  */
@@ -30,6 +30,8 @@ internal class EchoEstimator(
     private val windowSize: Int,
     private val paddedSize: Int,
     private val hop: Int,
+    private val overSubtraction: Double = 2.0,
+    private val reverbDecay: Double = 0.6,
 ) {
     private val bandCount = bandOf(sampleRate / 2.0) + 1
     private val paddedBands = IntArray(paddedSize) { bandOf(min(it, paddedSize - it) * sampleRate.toDouble() / paddedSize) }
@@ -173,8 +175,8 @@ internal class EchoEstimator(
             for (i in 0 until paddedSize) refPower[i] = max(refPower[i], re[i])
         }
         for (i in 0 until paddedSize) {
-            val predicted = OVER_SUBTRACTION * gain(paddedBands[i]) * refPower[i]
-            echoPower[i] = max(predicted, REVERB_DECAY * echoPower[i])
+            val predicted = overSubtraction * gain(paddedBands[i]) * refPower[i]
+            echoPower[i] = max(predicted, reverbDecay * echoPower[i])
         }
     }
 
@@ -188,8 +190,8 @@ internal class EchoEstimator(
         var energy = 0.0
         for (i in 0 until hop) energy += gain(hopBands[i]) * hopRefPower[i]
         // Parseval: Σ|X(k)|² = N Σ x²; per sample that is Σ|X(k)|² / N².
-        val predicted = OVER_SUBTRACTION * energy / (hop.toDouble() * hop)
-        hopEchoEnergy = max(predicted, REVERB_DECAY * hopEchoEnergy)
+        val predicted = overSubtraction * energy / (hop.toDouble() * hop)
+        hopEchoEnergy = max(predicted, reverbDecay * hopEchoEnergy)
     }
 
     private fun estimateDelay() {
@@ -281,8 +283,6 @@ internal class EchoEstimator(
         const val PLAYER_PAUSE_HOPS = 43 // ~0.5 s
         const val ONSET_SPREAD_HOPS = 4
 
-        const val OVER_SUBTRACTION = 2.0
-        const val REVERB_DECAY = 0.6
         const val SILENCE = 1e-7
         const val ENVELOPE_FLOOR = 1e-8
         const val TINY = 1e-12

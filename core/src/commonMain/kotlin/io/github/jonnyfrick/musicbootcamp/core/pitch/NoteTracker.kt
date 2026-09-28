@@ -21,6 +21,28 @@ data class DetectedNote(
     val sampleTime: Long,
 )
 
+/** What [NoteTracker] saw and decided in one hop (for analysing recordings). */
+class HopTrace(
+    /** Samples since the tracker started, at the end of the hop. */
+    val sampleTime: Long,
+    val level: Double,
+    /** The level a stroke is judged by: [level], or what exceeds the app's predicted sound. */
+    val strokeLevel: Double,
+    /** Predicted RMS of the app's own sound (with the safety factor); 0 without a reference. */
+    val ownSoundLevel: Double,
+    val delayHops: Int?,
+    val ownSoundRemoved: Boolean,
+    /** Input ignored because the app plays and its sound cannot be removed yet. */
+    val blocked: Boolean,
+    val referenceOnsetNear: Boolean,
+    val onset: Boolean,
+    /** The pitch analysed in this hop, if any. */
+    val frequencyHz: Double?,
+    val clarity: Double?,
+    /** The predicted power spectrum of the app's sound; only valid during the callback. */
+    val ownSoundPower: DoubleArray?,
+)
+
 /** A block of microphone samples and, if known, what the app played meanwhile (same length). */
 class AudioBlock(val microphone: FloatArray, val reference: FloatArray? = null)
 
@@ -41,13 +63,13 @@ class AudioBlock(val microphone: FloatArray, val reference: FloatArray? = null)
 class NoteTracker(
     val sampleRate: Int,
     private val referenceAHz: Double = Tuning.STANDARD_A_HZ,
-    /** Minimum RMS level (full scale = 1) of a stroke; below that everything is ignored. */
-    private val noiseGate: Double = 0.01,
-    private val onsetRatio: Double = 2.0,
-    private val minClarity: Double = 0.75,
-    private val confirmFrames: Int = 2,
+    private val parameters: DetectionParameters = DetectionParameters(),
 ) {
-    private val detector = PitchDetector(sampleRate)
+    private val noiseGate = parameters.noiseGate
+    private val onsetRatio = parameters.onsetRatio
+    private val minClarity = parameters.minClarity
+    private val confirmFrames = parameters.confirmFrames
+    private val detector = PitchDetector(sampleRate, peakThreshold = parameters.peakThreshold)
     private val windowSize = detector.windowSize
     private val hop = windowSize / 4
 
@@ -73,6 +95,9 @@ class NoteTracker(
      */
     val detectionDelay: Duration = ((SETTLE_HOPS + confirmFrames) * hop).toDouble().div(sampleRate).seconds
 
+    /** Receives what happened in every hop, for analysing recordings. */
+    var trace: ((HopTrace) -> Unit)? = null
+
     /** RMS of the latest hop, for a level meter. */
     var level: Double = 0.0
         private set
@@ -85,9 +110,11 @@ class NoteTracker(
      * app played at the same time, sample by sample; null means silence (or unknown, if never given).
      */
     fun process(samples: FloatArray, reference: FloatArray? = null): List<DetectedNote> {
-        if (reference != null) {
+        if (reference != null && parameters.echoCancellation) {
             require(reference.size == samples.size) { "Reference and microphone blocks differ in length" }
-            if (echo == null) echo = EchoEstimator(sampleRate, windowSize, detector.paddedSize, hop)
+            if (echo == null) {
+                echo = EchoEstimator(sampleRate, windowSize, detector.paddedSize, hop, parameters.overSubtraction, parameters.reverbDecay)
+            }
         }
         val notes = mutableListOf<DetectedNote>()
         for ((index, sample) in samples.withIndex()) {
@@ -102,7 +129,28 @@ class NoteTracker(
         return notes
     }
 
+    private var traced: PitchEstimate? = null
+    private var tracedStroke = 0.0
+    private var tracedBlocked = false
+    private var tracedOnset = false
+
     private fun analyseHop(): DetectedNote? {
+        traced = null
+        val note = analyse()
+        trace?.let { report ->
+            val echo = echo
+            report(
+                HopTrace(
+                    samplesSeen, level, tracedStroke, echo?.let { sqrt(it.hopEchoEnergy) } ?: 0.0, echo?.delayHops,
+                    echo?.ready == true, tracedBlocked, echo?.referenceOnsetNear == true, tracedOnset,
+                    traced?.frequencyHz, traced?.clarity, echo?.echoPower,
+                ),
+            )
+        }
+        return note
+    }
+
+    private fun analyse(): DetectedNote? {
         var sum = 0.0
         for (sample in hopBuffer) sum += sample * sample
         level = sqrt(sum / hop)
@@ -117,13 +165,16 @@ class NoteTracker(
 
         // Where the app's note starts, its prediction is least exact: there a stroke must also
         // stand out against the app's sound, not only against what remained before.
-        val ownLevel = if (ownSoundRemoved && echo!!.referenceOnsetNear) sqrt(echo.hopEchoEnergy) * OWN_SOUND_SHARE else 0.0
+        val ownLevel = if (ownSoundRemoved && echo!!.referenceOnsetNear) sqrt(echo.hopEchoEnergy) * parameters.ownSoundShare else 0.0
         val previous = maxOf(recentLevels.minOrNull() ?: 0.0, ownLevel)
         // What remains of the app's sound fluctuates (e.g. beating with a ringing note); a real
         // stroke also raises the total level above the last hops.
-        val louder = !ownSoundRemoved || level > RAW_RISE * (recentRawLevels.minOrNull() ?: 0.0)
+        val louder = !ownSoundRemoved || level > parameters.rawRise * (recentRawLevels.minOrNull() ?: 0.0)
         val onset = !blocked && louder && strokeLevel >= noiseGate && strokeLevel > onsetRatio * previous &&
             (hopsSinceOnset < 0 || hopsSinceOnset >= REFRACTORY_HOPS)
+        tracedStroke = strokeLevel
+        tracedBlocked = blocked
+        tracedOnset = onset
         recentLevels.addLast(strokeLevel)
         if (recentLevels.size > LEVEL_HISTORY) recentLevels.removeFirst()
         recentRawLevels.addLast(level)
@@ -154,6 +205,7 @@ class NoteTracker(
 
         val ownSound = if (ownSoundRemoved) echo!!.echoPower else null
         val estimate = detector.detect(window, background, ownSound) ?: return null.also { resetCandidate() }
+        traced = estimate
         if (estimate.clarity < minClarity) return null.also { resetCandidate() }
 
         val note = frequencyToMidi(estimate.frequencyHz, referenceAHz).roundToInt()
@@ -184,9 +236,7 @@ class NoteTracker(
         const val REFRACTORY_HOPS = 6
         const val SETTLE_HOPS = 3
         const val GIVE_UP_HOPS = 16
-        const val OWN_SOUND_SHARE = 0.5
         const val PLAYER_ACTIVE_HOPS = 43 // ~0.5 s
-        const val RAW_RISE = 1.5
     }
 }
 
@@ -196,7 +246,8 @@ fun Flow<FloatArray>.detectNotes(
     referenceAHz: Double,
     onNote: (DetectedNote) -> Unit = {},
     onLevel: (Double) -> Unit = {},
-): Flow<MidiMessage> = map { AudioBlock(it) }.detectNotes(sampleRate, referenceAHz, onNote, onLevel)
+    parameters: DetectionParameters = DetectionParameters(),
+): Flow<MidiMessage> = map { AudioBlock(it) }.detectNotes(sampleRate, referenceAHz, onNote, onLevel, parameters)
 
 /** Like the microphone-only version; blocks with a reference have the app's own sound removed. */
 @JvmName("detectNotesInBlocks")
@@ -205,8 +256,9 @@ fun Flow<AudioBlock>.detectNotes(
     referenceAHz: Double,
     onNote: (DetectedNote) -> Unit = {},
     onLevel: (Double) -> Unit = {},
+    parameters: DetectionParameters = DetectionParameters(),
 ): Flow<MidiMessage> = flow {
-    val tracker = NoteTracker(sampleRate, referenceAHz)
+    val tracker = NoteTracker(sampleRate, referenceAHz, parameters)
     collect { block ->
         val notes = tracker.process(block.microphone, block.reference)
         onLevel(tracker.level)

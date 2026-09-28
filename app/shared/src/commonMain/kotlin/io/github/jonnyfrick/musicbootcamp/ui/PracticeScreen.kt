@@ -85,6 +85,8 @@ internal fun PracticeScreen(controller: AppController) {
         Switch(checked = controller.preferences.showGivenNotes, onCheckedChange = controller::setShowGivenNotes)
     }
 
+    if (!running) controller.runSummary?.let { RunSummaryCard(it) }
+
     SectionTitle("Your sequences")
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text("random")

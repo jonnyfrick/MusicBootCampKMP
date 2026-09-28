@@ -169,6 +169,8 @@ private fun MicrophoneSettings(controller: AppController) {
         }
     }
     Hint("Relative to Kammerton A below. The level bar should move clearly when you play.")
+    Spacer(Modifier.height(8.dp))
+    OptimizationSettings(controller)
 }
 
 @Composable

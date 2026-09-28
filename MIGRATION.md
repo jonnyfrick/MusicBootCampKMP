@@ -211,6 +211,15 @@ messages, so the exercise logic is the same as with a MIDI keyboard.
   removed, the WAV has a second channel with what the loudspeaker played. Exercise events are placed at
   the end of the audio received so far (±1 block). `RecordingReplayTest` replays them through
   `NoteTracker` (see README). Recordings are personal data: never commit them.
+- Optimization mode (Preferences → Microphone): every exercise stops by itself after n notes
+  (`PracticeRunner(maxSteps = …)`, the last note is evaluated after the late-answer tolerance)
+  and is recorded; the detection parameters (`core/pitch/DetectionParameters`, stored in
+  `preferences.json`, defaults = the tuned constants) can be edited, and the Practice tab lists
+  the last run step by step (`summarize`), so the player can report where they played something
+  else. Recordings store the parameters they were made with. `RecordingReplayTest` analyses
+  recordings: a step table with each recognition mistake classified, a CSV of every hop's
+  decisions (`NoteTracker.trace`) and a spectrogram PNG (microphone, reference, predicted own
+  sound, levels), optionally a parameter sweep (see README).
 - Desktop capture: `app/shared/src/jvmMain/.../JavaSoundAudio.kt` (javax.sound.sampled, 44.1 kHz
   mono). Other platforms have the `AudioInputBackend` interface but no implementation yet
   (Android `AudioRecord`, iOS `AVAudioEngine`, web `getUserMedia` + AudioWorklet).

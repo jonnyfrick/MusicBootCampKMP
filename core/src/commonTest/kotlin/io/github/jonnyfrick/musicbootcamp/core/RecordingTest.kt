@@ -4,7 +4,11 @@ import io.github.jonnyfrick.musicbootcamp.core.audio.RecordingEventType
 import io.github.jonnyfrick.musicbootcamp.core.audio.RecordingFile
 import io.github.jonnyfrick.musicbootcamp.core.audio.RecordingLog
 import io.github.jonnyfrick.musicbootcamp.core.audio.SessionRecorder
+import io.github.jonnyfrick.musicbootcamp.core.audio.StepSummary
 import io.github.jonnyfrick.musicbootcamp.core.audio.Wav
+import io.github.jonnyfrick.musicbootcamp.core.pitch.DetectionParameters
+import io.github.jonnyfrick.musicbootcamp.core.pitch.detectionParametersFromJson
+import io.github.jonnyfrick.musicbootcamp.core.pitch.toJson
 import io.github.jonnyfrick.musicbootcamp.core.midi.MidiMessage
 import io.github.jonnyfrick.musicbootcamp.core.persistence.SetupRepository
 import io.github.jonnyfrick.musicbootcamp.core.pitch.DetectedNote
@@ -79,5 +83,37 @@ class RecordingTest {
             ),
             log.events.map { it.sample to it.type },
         )
+    }
+
+    @Test
+    fun summaryGroupsEventsByStep() {
+        val file = MemoryFile()
+        val recorder = SessionRecorder(file, 44_100, listOf("microphone"))
+        fun step(given: Int, previous: Boolean?) =
+            recorder.step(StepResult(previousCorrect = previous, storedMistake = false, given = listOf(given), startedNotes = listOf(given)))
+
+        step(60, null)
+        recorder.audio(listOf(FloatArray(1000)))
+        recorder.detected(DetectedNote(60, 261.6, 0.0, sampleTime = 900))
+        recorder.accepted(MidiMessage.noteOn(60, 100))
+        step(62, previous = true)
+        recorder.audio(listOf(FloatArray(1000)))
+        recorder.evaluation(Evaluation(correct = false, storedMistake = false)) // the last step, at the end
+        recorder.finish(emptyMap())
+
+        assertEquals(
+            listOf(
+                StepSummary(1, listOf(60), detected = listOf(60), accepted = listOf(60), correct = true),
+                StepSummary(2, listOf(62), detected = emptyList(), accepted = emptyList(), correct = false),
+            ),
+            recorder.summary(),
+        )
+    }
+
+    @Test
+    fun detectionParametersRoundTripAndPartialOverrides() {
+        val tuned = DetectionParameters(rawRise = 1.3, echoCancellation = false)
+        assertEquals(tuned, detectionParametersFromJson(tuned.toJson()))
+        assertEquals(DetectionParameters(rawRise = 1.3), detectionParametersFromJson("""{"rawRise":1.3}"""))
     }
 }

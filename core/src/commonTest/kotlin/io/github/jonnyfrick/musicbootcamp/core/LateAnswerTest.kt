@@ -141,6 +141,35 @@ class LateAnswerTest {
         runner.stop()
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun aRunOfFixedLengthEvaluatesTheLastNoteAndFinishes() = runTest {
+        val settings = mono.copy(breathingTime = 1.0f)
+        val input = MutableSharedFlow<MidiMessage>(extraBufferCapacity = 8)
+        val sent = mutableListOf<MidiMessage>()
+        val runner = PracticeRunner(
+            backgroundScope, settings, LearnedSequences(), { sent += it }, input,
+            random = KotlinRandomSource(Random(3)),
+            lateAnswerTolerance = 150.milliseconds,
+            maxSteps = 3,
+            sessionDispatcher = StandardTestDispatcher(testScheduler),
+        )
+        runner.start()
+        runCurrent()
+        advanceTimeBy(2_500) // three notes given (0, 1000, 2000 ms)
+        input.emit(key(runner.status.value.given.single()))
+        runCurrent()
+        assertFalse(runner.status.value.finished)
+
+        advanceTimeBy(1_000) // at 3000 ms no fourth note; the last one is evaluated after the tolerance
+        assertEquals(3, runner.status.value.steps)
+        assertEquals(1, runner.status.value.correct)
+        assertEquals(2, runner.status.value.wrong)
+        assertTrue(runner.status.value.finished)
+        assertEquals(3, sent.count { it.isNoteOn })
+        runner.stop()
+    }
+
     @Test
     fun ownSoundGateLetsOtherNotesThroughWhileTheAppPlays() {
         val time = TestTimeSource()

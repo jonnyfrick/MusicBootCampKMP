@@ -20,6 +20,12 @@ sealed interface Corrector {
     /** Evaluates the step that just ended and updates the predecessor memory. */
     fun correct(): Boolean
 
+    /**
+     * What [correct] will say about the key presses so far, as soon as that is certain, without
+     * changing anything; null while it still depends on further presses.
+     */
+    fun verdict(): Boolean?
+
     /** The remembered steps in the order they are stored as a learned sequence. */
     fun predecessors(): LearnedSequence
 
@@ -28,6 +34,14 @@ sealed interface Corrector {
             PracticeMode.MONOPHONIC -> SingleNoteCorrector(memorySize)
             PracticeMode.TWO_VOICES_PURE_RANDOM -> TwoVoicesCorrector(memorySize)
             PracticeMode.HOMOPHONIC_MODES -> error("Homophonic modes are not implemented")
+        }
+
+        /** The [verdict] on [answer] to a step that gave [given]. */
+        fun judge(mode: PracticeMode, given: List<Int>, answer: List<Int>): Boolean? = forMode(mode, 1).run {
+            if (mode.voices == 1) addGiven(given[0]) else given.forEach(::addGiven)
+            resetRecorded()
+            answer.forEach(::addRecorded)
+            verdict()
         }
     }
 }
@@ -62,6 +76,8 @@ class SingleNoteCorrector(private val memorySize: Int) : Corrector {
         if (predecessors.size > memorySize) predecessors.removeAt(0)
         return recorded == given
     }
+
+    override fun verdict(): Boolean? = if (recorded >= 0) recorded == given else null
 
     override fun predecessors(): LearnedSequence = predecessors.map { SequenceElement.Note(it) }
 }
@@ -112,6 +128,15 @@ class TwoVoicesCorrector(private val memorySize: Int) : Corrector {
         }
         recorded.clear()
         return true
+    }
+
+    /** Certain after two presses, or after one that is wrong or answers a unison. */
+    override fun verdict(): Boolean? = when {
+        given.isEmpty() || recorded.isEmpty() -> null
+        recorded.size >= 2 -> given.toMutableList().let { open -> recorded.all { open.remove(it) } }
+        recorded[0] !in given -> false
+        given.all { it == recorded[0] } -> true
+        else -> null
     }
 
     override fun predecessors(): LearnedSequence = predecessors.map { SequenceElement.Chord(it) }

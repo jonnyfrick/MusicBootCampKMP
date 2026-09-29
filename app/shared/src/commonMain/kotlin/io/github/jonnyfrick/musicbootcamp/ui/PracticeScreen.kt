@@ -60,6 +60,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.github.jonnyfrick.musicbootcamp.core.midi.NoteNames
 import io.github.jonnyfrick.musicbootcamp.core.practice.PracticeStatus
+import io.github.jonnyfrick.musicbootcamp.core.practice.StepVerdict
 import io.github.jonnyfrick.musicbootcamp.resources.*
 import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.stringResource
@@ -229,40 +230,37 @@ private fun PracticeContent(controller: AppController, onCustomize: (() -> Unit)
 }
 
 /**
- * The latest result while it is news, otherwise "listening": every answer shows for at least
- * [RESULT_HOLD_MILLIS] (less at very fast tempos) and then gives way to "listening" as soon as a
- * step waits for its answer. Each result fades in anew, so a run of right (or wrong) answers is
- * visible too.
+ * The latest answer's result right when it is recognised, otherwise "listening": a result shows
+ * for at least [RESULT_HOLD_MILLIS] (less at very fast tempos) and then gives way to "listening"
+ * as soon as a step waits for its answer. Each result fades in anew, so a run of right (or wrong)
+ * answers is visible too.
  */
 @Composable
 private fun LiveResult(status: PracticeStatus, running: Boolean, breathingTime: Float) {
-    val evaluated = status.correct + status.wrong
     var holding by remember { mutableStateOf(false) }
-    LaunchedEffect(evaluated) {
-        if (evaluated == 0) return@LaunchedEffect
+    LaunchedEffect(status.lastResult) {
+        if (status.lastResult == null) return@LaunchedEffect
         holding = true
         delay(minOf(RESULT_HOLD_MILLIS, (breathingTime * 500).toLong()))
         holding = false
     }
     val result = shownResult(status, running, holding)
     AnimatedContent(
-        targetState = result to evaluated,
+        targetState = result,
         transitionSpec = { (fadeIn(tween(150)) + scaleIn(tween(150), initialScale = 0.85f)) togetherWith fadeOut(tween(100)) },
         contentAlignment = Alignment.Center,
-    ) { (shown, _) -> ResultBadge(shown, running) }
+    ) { shown -> ResultBadge(shown?.correct, running) }
 }
 
 private const val RESULT_HOLD_MILLIS = 700L
 
 /**
  * The result to show, or null for "listening" (or idle when stopped). [holding]: the latest
- * result came in less than [RESULT_HOLD_MILLIS] ago. A step waits for its answer when more steps
- * were given than evaluated (after a late answer, or a missed one evaluated with the next step).
+ * result came in less than [RESULT_HOLD_MILLIS] ago. After that it stays only while it is about
+ * the current step, i.e. no newer step waits for its answer.
  */
-internal fun shownResult(status: PracticeStatus, running: Boolean, holding: Boolean): Boolean? {
-    val evaluated = status.correct + status.wrong
-    return status.lastCorrect.takeIf { running && evaluated > 0 && (holding || evaluated >= status.steps) }
-}
+internal fun shownResult(status: PracticeStatus, running: Boolean, holding: Boolean): StepVerdict? =
+    status.lastResult?.takeIf { running && (holding || it.step == status.steps - 1) }
 
 /** Right or wrong, as colour, icon and word (not by colour alone), announced to screen readers. */
 @Composable

@@ -1,5 +1,15 @@
 package io.github.jonnyfrick.musicbootcamp.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -31,12 +41,15 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
@@ -46,7 +59,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.github.jonnyfrick.musicbootcamp.core.midi.NoteNames
+import io.github.jonnyfrick.musicbootcamp.core.practice.PracticeStatus
 import io.github.jonnyfrick.musicbootcamp.resources.*
+import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -186,7 +201,7 @@ private fun PracticeContent(controller: AppController, onCustomize: (() -> Unit)
                     modifier = Modifier.semantics { contentDescription = notesDescription },
                 )
                 VerticalSpace(12)
-                ResultBadge(status.lastCorrect, running)
+                LiveResult(status, running, settings.breathingTime)
                 VerticalSpace(24)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                     Stat(stringResource(Res.string.stat_steps), status.steps)
@@ -213,6 +228,42 @@ private fun PracticeContent(controller: AppController, onCustomize: (() -> Unit)
     }
 }
 
+/**
+ * The latest result while it is news, otherwise "listening": every answer shows for at least
+ * [RESULT_HOLD_MILLIS] (less at very fast tempos) and then gives way to "listening" as soon as a
+ * step waits for its answer. Each result fades in anew, so a run of right (or wrong) answers is
+ * visible too.
+ */
+@Composable
+private fun LiveResult(status: PracticeStatus, running: Boolean, breathingTime: Float) {
+    val evaluated = status.correct + status.wrong
+    var holding by remember { mutableStateOf(false) }
+    LaunchedEffect(evaluated) {
+        if (evaluated == 0) return@LaunchedEffect
+        holding = true
+        delay(minOf(RESULT_HOLD_MILLIS, (breathingTime * 500).toLong()))
+        holding = false
+    }
+    val result = shownResult(status, running, holding)
+    AnimatedContent(
+        targetState = result to evaluated,
+        transitionSpec = { (fadeIn(tween(150)) + scaleIn(tween(150), initialScale = 0.85f)) togetherWith fadeOut(tween(100)) },
+        contentAlignment = Alignment.Center,
+    ) { (shown, _) -> ResultBadge(shown, running) }
+}
+
+private const val RESULT_HOLD_MILLIS = 700L
+
+/**
+ * The result to show, or null for "listening" (or idle when stopped). [holding]: the latest
+ * result came in less than [RESULT_HOLD_MILLIS] ago. A step waits for its answer when more steps
+ * were given than evaluated (after a late answer, or a missed one evaluated with the next step).
+ */
+internal fun shownResult(status: PracticeStatus, running: Boolean, holding: Boolean): Boolean? {
+    val evaluated = status.correct + status.wrong
+    return status.lastCorrect.takeIf { running && evaluated > 0 && (holding || evaluated >= status.steps) }
+}
+
 /** Right or wrong, as colour, icon and word (not by colour alone), announced to screen readers. */
 @Composable
 private fun ResultBadge(correct: Boolean?, running: Boolean) {
@@ -235,7 +286,20 @@ private fun ResultBadge(correct: Boolean?, running: Boolean) {
         when (correct) {
             true -> Icon(AppIcons.Check, contentDescription = null, tint = content, modifier = Modifier.size(20.dp).padding(end = 4.dp))
             false -> Icon(AppIcons.Close, contentDescription = null, tint = content, modifier = Modifier.size(20.dp).padding(end = 4.dp))
-            null -> Unit
+            null -> if (running) {
+                // Listening: a gently pulsing note, so the display is visibly alive.
+                val pulse by rememberInfiniteTransition().animateFloat(
+                    initialValue = 0.35f,
+                    targetValue = 1f,
+                    animationSpec = infiniteRepeatable(tween(600), RepeatMode.Reverse),
+                )
+                Icon(
+                    AppIcons.MusicNote,
+                    contentDescription = null,
+                    tint = content,
+                    modifier = Modifier.size(20.dp).padding(end = 4.dp).alpha(pulse),
+                )
+            }
         }
         Text(stringResource(text), style = MaterialTheme.typography.labelLarge, color = content)
     }

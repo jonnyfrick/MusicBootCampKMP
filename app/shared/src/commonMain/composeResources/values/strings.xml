@@ -36,7 +36,7 @@
     <!-- Practice -->
     <string name="practice_summary">%1$s · %2$s – %3$s · every %4$s s</string>
     <string name="practice_idle">Press Start to begin</string>
-    <string name="practice_listen">Listen and play along</string>
+    <string name="practice_listen">Listening …</string>
     <string name="practice_correct">Correct</string>
     <string name="practice_wrong">Wrong</string>
     <string name="practice_given_notes">Given notes</string>

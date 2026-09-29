@@ -36,7 +36,7 @@
     <!-- Practice -->
     <string name="practice_summary">%1$s · %2$s – %3$s · alle %4$s s</string>
     <string name="practice_idle">Zum Beginnen Start drücken</string>
-    <string name="practice_listen">Hören und nachspielen</string>
+    <string name="practice_listen">Hört zu …</string>
     <string name="practice_correct">Richtig</string>
     <string name="practice_wrong">Falsch</string>
     <string name="practice_given_notes">Vorgegebene Töne</string>

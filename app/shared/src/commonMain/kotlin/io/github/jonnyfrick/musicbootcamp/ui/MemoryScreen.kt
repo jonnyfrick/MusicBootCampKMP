@@ -1,15 +1,18 @@
 package io.github.jonnyfrick.musicbootcamp.ui
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Switch
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -17,86 +20,111 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import io.github.jonnyfrick.musicbootcamp.resources.*
+import org.jetbrains.compose.resources.stringResource
 import kotlin.math.roundToInt
 
 /** Java: Options → Memory (`MemoryOptionsDialog`), plus an overview of what was learned. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun MemoryScreen(controller: AppController) {
+internal fun MemoryScreen(controller: AppController, snackbar: SnackbarHostState) {
+    Scaffold(
+        topBar = { SetupTopBar(controller) },
+        snackbarHost = { SnackbarHost(snackbar) },
+    ) { padding ->
+        CenteredColumn(Modifier.padding(padding)) { MemoryContent(controller) }
+    }
+}
+
+@Composable
+private fun MemoryContent(controller: AppController) {
     val settings = controller.settings
     val enabled = !controller.running
     var confirmClear by remember { mutableStateOf(false) }
 
-    SectionTitle("Learning")
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Switch(
+    SettingsSection(stringResource(Res.string.section_learning)) {
+        SwitchSetting(
+            title = stringResource(Res.string.learn_new),
             checked = settings.learnNewSequences,
             onCheckedChange = { checked -> controller.updateSettings { it.copy(learnNewSequences = checked) } },
             enabled = enabled,
+            supporting = stringResource(Res.string.learn_new_hint),
         )
-        Spacer(Modifier.width(12.dp))
-        Text("Learn new sequences")
+        IntSliderSetting(
+            title = stringResource(Res.string.remember),
+            value = settings.memorySize,
+            range = 1..16,
+            onChange = { value -> controller.updateSettings { it.copy(memorySize = value) } },
+            enabled = enabled,
+            valueText = stringResource(Res.string.value_steps, settings.memorySize),
+        )
+        val transpositions = (settings.transpositionsProbability * 100).roundToInt()
+        IntSliderSetting(
+            title = stringResource(Res.string.transpositions),
+            value = transpositions,
+            range = 0..100,
+            onChange = { value -> controller.updateSettings { it.copy(transpositionsProbability = value / 100.0) } },
+            enabled = enabled,
+            valueText = "$transpositions %",
+            supporting = stringResource(Res.string.transpositions_hint),
+            fineSteps = true,
+        )
     }
-    Hint("When you play a step wrong, the preceding steps are stored and come back later on the Practice tab.")
-    Spacer(Modifier.height(8.dp))
-    IntSlider("Remember", settings.memorySize, 1..16, enabled, valueText = { "$it steps" }) { value ->
-        controller.updateSettings { it.copy(memorySize = value) }
-    }
-    IntSlider(
-        "Transpositions",
-        (settings.transpositionsProbability * 100).roundToInt(),
-        0..100,
-        enabled,
-        valueText = { "$it %" },
-    ) { value -> controller.updateSettings { it.copy(transpositionsProbability = value / 100.0) } }
-    Hint("Transpositions are stored with the setup but not used by the exercise yet (neither in the Java version).")
 
-    SectionTitle("Learned sequences (${modeLabel(settings.mode)})")
-    val counts = controller.memoryCounts
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    SettingsSection(stringResource(Res.string.section_learned, modeLabel(settings.mode))) {
+        val counts = controller.memoryCounts
+        val most = counts.maxOrNull()?.takeIf { it > 0 } ?: 1
         counts.forEachIndexed { level, count ->
-            Row {
-                Text(priorityLabel(level), Modifier.width(280.dp))
-                Text("$count", style = MaterialTheme.typography.bodyLarge)
-            }
+            ListItem(
+                headlineContent = { Text(levelLabel(level, counts.size)) },
+                supportingContent = {
+                    LinearProgressIndicator(
+                        progress = { count.toFloat() / most },
+                        modifier = Modifier.padding(top = 8.dp).width(200.dp),
+                        drawStopIndicator = {},
+                    )
+                },
+                trailingContent = { Text("$count", style = MaterialTheme.typography.titleMedium) },
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+            )
         }
-        Text("Total: ${counts.sum()}", style = MaterialTheme.typography.titleSmall)
-    }
-    if (controller.sequencesOutsideRange > 0) {
-        Hint(
-            "${controller.sequencesOutsideRange} of them reach outside the current range " +
-                "(${settings.lowLimit}–${settings.highLimit}) and are skipped until the range covers them again.",
+        ListItem(
+            headlineContent = { Text(stringResource(Res.string.total, counts.sum()), style = MaterialTheme.typography.titleSmall) },
+            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
         )
-    }
-    Hint(
-        "New mistakes start at the top level. Each time a sequence is practised it moves one level down, " +
-            "and after the last level it is forgotten. Higher levels come back more often.",
-    )
-    Spacer(Modifier.height(12.dp))
-    OutlinedButton(onClick = { confirmClear = true }, enabled = enabled && counts.sum() > 0) {
-        Text("Forget all sequences of this mode…")
-    }
+        if (controller.sequencesOutsideRange > 0) SettingHint(stringResource(Res.string.outside_range, controller.sequencesOutsideRange))
+        SettingHint(stringResource(Res.string.levels_hint))
+        ButtonRow {
+            OutlinedButton(
+                onClick = { confirmClear = true },
+                enabled = enabled && counts.sum() > 0,
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+            ) { Text(stringResource(Res.string.forget_all)) }
+        }
 
-    if (confirmClear) {
-        AlertDialog(
-            onDismissRequest = { confirmClear = false },
-            title = { Text("Forget ${counts.sum()} sequences?") },
-            text = { Text("All learned sequences of the mode '${modeLabel(settings.mode)}' in this setup are deleted.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmClear = false
-                    controller.clearMemory()
-                }) { Text("Forget") }
-            },
-            dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Cancel") } },
-        )
+        if (confirmClear) {
+            AlertDialog(
+                onDismissRequest = { confirmClear = false },
+                title = { Text(stringResource(Res.string.forget_title, counts.sum())) },
+                text = { Text(stringResource(Res.string.forget_text, modeLabel(settings.mode))) },
+                confirmButton = {
+                    TextButton(onClick = {
+                        confirmClear = false
+                        controller.clearMemory()
+                    }) { Text(stringResource(Res.string.forget), color = MaterialTheme.colorScheme.error) }
+                },
+                dismissButton = { TextButton(onClick = { confirmClear = false }) { Text(stringResource(Res.string.cancel)) } },
+            )
+        }
     }
 }
 
-private fun priorityLabel(level: Int) = when (level) {
-    0 -> "Level 1 (newest, most often)"
-    4 -> "Level 5 (almost mastered)"
-    else -> "Level ${level + 1}"
+@Composable
+private fun levelLabel(level: Int, levels: Int): String = when (level) {
+    0 -> stringResource(Res.string.level_first)
+    levels - 1 -> stringResource(Res.string.level_last)
+    else -> stringResource(Res.string.level, level + 1)
 }

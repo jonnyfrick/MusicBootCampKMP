@@ -44,8 +44,8 @@ Installable packages (DMG, MSI, DEB) for the current OS: `./gradlew :app:desktop
 MIDI devices can be plugged in and out while the app runs; the device lists update by themselves
 (on macOS via [CoreMIDI4J](https://github.com/DerekCook/CoreMidi4J)).
 
-Preferences has a MIDI test (shows the keys arriving from your keyboard, plays a test note on the
-MIDI output) and a microphone test (level meter and recognised note).
+Settings → MIDI devices has a MIDI test (shows the keys arriving from your keyboard, plays a test
+note on the MIDI output); Settings → Input has a microphone test (level meter and recognised note).
 
 Without headphones and with "Gervill" as MIDI Out, the app renders the synthesizer itself and removes
 its own sound from the microphone signal. That needs the JVM argument
@@ -55,7 +55,7 @@ run from elsewhere without it, the app falls back to ignoring input that matches
 On macOS the first microphone test asks for microphone permission for the app that started Gradle
 (Android Studio or the terminal).
 
-With "Record exercises" (Preferences → Microphone) every exercise with microphone input is saved to
+With "Record exercises" (Settings → Recognition) every exercise with microphone input is saved to
 `recordings/` in the data directory: the microphone signal as WAV plus a JSON log of the notes the
 app played, the notes recognised and the evaluations. To see how the current pitch detection handles
 them:
@@ -70,7 +70,7 @@ where it was not the given note, `-` = nothing), `-Pmusicbootcamp.parameters={"r
 (replay with changed detection parameters) and `-Pmusicbootcamp.sweep=true` (rank a grid of
 parameters), `-Pmusicbootcamp.voices=2` (use the chord recognition), `-Pmusicbootcamp.templates=<piano-templates.json>`
 (a piano calibration) and `-Pmusicbootcamp.learnTemplates=<file>` (with `voices=1`: learn piano templates from single-note
-recordings). "Optimization mode" in Preferences → Microphone makes such test runs easy: a fixed
+recordings). "Optimization mode" in Settings → Recognition makes such test runs easy: a fixed
 number of notes, always recorded, detection parameters editable, and a step-by-step list afterwards.
 
 ### Other targets
@@ -87,4 +87,4 @@ iOS via Xcode in [`app/iosApp`](app/iosApp).
 `core` contains golden master tests that replay outputs recorded from the Java implementation;
 they run on a synthetic data set that is part of the repository (personal practice data is optional,
 see [MIGRATION.md](MIGRATION.md)). `app/desktopApp` renders every screen off-screen into
-`app/desktopApp/build/screenshots`.
+`app/desktopApp/build/screenshots`, in phone, tablet and desktop window sizes and in German.

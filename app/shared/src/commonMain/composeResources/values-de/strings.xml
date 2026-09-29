@@ -1,0 +1,234 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Navigation -->
+    <string name="nav_practice">Üben</string>
+    <string name="nav_memory">Gedächtnis</string>
+    <string name="nav_settings">Einstellungen</string>
+
+    <!-- Common -->
+    <string name="back">Zurück</string>
+    <string name="close">Schließen</string>
+    <string name="cancel">Abbrechen</string>
+    <string name="save">Speichern</string>
+    <string name="delete">Löschen</string>
+    <string name="more_options">Weitere Optionen</string>
+    <string name="reset_defaults">Standardwerte</string>
+    <string name="stop_test">Test beenden</string>
+    <string name="play_a_key">Spiel eine Taste …</string>
+    <string name="no_device">Kein Gerät gefunden</string>
+    <string name="value_seconds">%1$s s</string>
+    <string name="value_ms">%1$s ms</string>
+    <string name="value_hz">%1$s Hz</string>
+    <string name="decrease">%1$s verringern</string>
+    <string name="increase">%1$s erhöhen</string>
+
+    <!-- Setups -->
+    <string name="setup_choose">Setup wählen, aktuell: %1$s</string>
+    <string name="setup_save_as">Setup speichern unter …</string>
+    <string name="setup_import">Setup aus MusicBootCamp (Java) importieren …</string>
+    <string name="setup_delete">Dieses Setup löschen …</string>
+    <string name="setup_save_as_title">Setup speichern unter</string>
+    <string name="setup_name">Name</string>
+    <string name="setup_copy_name">%1$s Kopie</string>
+    <string name="setup_delete_title">„%1$s“ löschen?</string>
+    <string name="setup_delete_text">Seine Einstellungen und alle gelernten Sequenzen werden gelöscht. Das lässt sich nicht rückgängig machen.</string>
+
+    <!-- Practice -->
+    <string name="practice_summary">%1$s · %2$s – %3$s · alle %4$s s</string>
+    <string name="practice_idle">Zum Beginnen Start drücken</string>
+    <string name="practice_listen">Hören und nachspielen</string>
+    <string name="practice_correct">Richtig</string>
+    <string name="practice_wrong">Falsch</string>
+    <string name="practice_given_notes">Vorgegebene Töne</string>
+    <string name="stat_steps">Schritte</string>
+    <string name="stat_correct">Richtig</string>
+    <string name="stat_wrong">Falsch</string>
+    <string name="stat_stored">Gemerkt</string>
+    <string name="start">Start</string>
+    <string name="stop">Stopp</string>
+    <string name="show_notes">Töne anzeigen</string>
+    <string name="customize_exercise">Übung anpassen</string>
+    <string name="exercise">Übung</string>
+    <string name="stop_to_change">Stoppe die Übung, um ihre Einstellungen zu ändern.</string>
+
+    <!-- Exercise settings -->
+    <string name="section_mode">Modus</string>
+    <string name="mode_monophonic">Einzeltöne</string>
+    <string name="mode_two_voices">Zweistimmig, zufällig</string>
+    <string name="mode_homophonic">Homophone Modi (nicht umgesetzt)</string>
+    <string name="mode_hint">Jeder Modus merkt sich eigene Sequenzen.</string>
+    <string name="section_tempo">Tempo</string>
+    <string name="breathing_time">Atemzeit</string>
+    <string name="breathing_time_hint">Zeit von einem Schritt zum nächsten.</string>
+    <string name="sustain">Tonlänge</string>
+    <string name="sustain_hint">Wie lange die App ihren Ton hält, in Prozent der Atemzeit.</string>
+    <string name="velocity">Anschlagstärke</string>
+    <string name="velocity_hint">Wie stark die App ihre Töne anschlägt (1–127).</string>
+    <string name="section_range">Tonumfang</string>
+    <string name="range">Von %1$s bis %2$s</string>
+    <string name="range_hint">Mindestens %1$s Halbtöne. Übungen beginnen bei %2$s.</string>
+    <string name="section_intervals">Intervalle</string>
+    <string name="intervals_hint">Wie oft jedes Intervall für einen Zufallsschritt gewählt wird (0 = nie).</string>
+    <string name="intervals_problem">Mindestens ein Intervall braucht ein Gewicht über 0.</string>
+    <string name="section_sequences">Deine Sequenzen</string>
+    <string name="memorized_share">Gelernte Sequenzen</string>
+    <string name="memorized_hint">Anteil der Schritte, die eine früher falsch gespielte Sequenz wiederholen (%1$s gespeichert für diesen Modus).</string>
+    <string name="section_direction">Richtung</string>
+    <string name="direction_linear">Linear</string>
+    <string name="direction_random">Zufällig</string>
+    <string name="direction_alternating">Abwechselnd</string>
+    <string name="direction_hint">Wird mit dem Setup gespeichert; die Übung verwendet sie noch nicht (auch die Java-Version nicht).</string>
+
+    <!-- Memory -->
+    <string name="section_learning">Lernen</string>
+    <string name="learn_new">Neue Sequenzen lernen</string>
+    <string name="learn_new_hint">Wenn du einen Schritt falsch spielst, werden die Schritte davor gespeichert und kommen später wieder.</string>
+    <string name="remember">Merken</string>
+    <string name="value_steps">%1$s Schritte</string>
+    <string name="transpositions">Transpositionen</string>
+    <string name="transpositions_hint">Wird mit dem Setup gespeichert; die Übung verwendet sie noch nicht (auch die Java-Version nicht).</string>
+    <string name="section_learned">Gelernte Sequenzen · %1$s</string>
+    <string name="level_first">Stufe 1 · neueste, am häufigsten</string>
+    <string name="level">Stufe %1$s</string>
+    <string name="level_last">Stufe 5 · fast gemeistert</string>
+    <string name="total">Gesamt: %1$s</string>
+    <string name="outside_range">%1$s davon reichen über den aktuellen Tonumfang hinaus und werden übersprungen, bis der Umfang sie wieder abdeckt.</string>
+    <string name="levels_hint">Neue Fehler beginnen auf Stufe 1. Jedes Mal, wenn eine Sequenz geübt wird, rückt sie eine Stufe weiter; nach der letzten Stufe wird sie vergessen. Niedrigere Stufen kommen öfter wieder.</string>
+    <string name="forget_all">Alle Sequenzen dieses Modus vergessen …</string>
+    <string name="forget_title">%1$s Sequenzen vergessen?</string>
+    <string name="forget_text">Alle gelernten Sequenzen des Modus „%1$s“ in diesem Setup werden gelöscht.</string>
+    <string name="forget">Vergessen</string>
+
+    <!-- Settings -->
+    <string name="settings_input">Eingabe</string>
+    <string name="settings_midi">MIDI-Geräte</string>
+    <string name="settings_tuning">Stimmung</string>
+    <string name="settings_recognition">Erkennung</string>
+    <string name="settings_recognition_summary">Feinabstimmung der Mikrofon-Erkennung</string>
+    <string name="input_source">Eingabe über</string>
+    <string name="input_midi">MIDI-Keyboard</string>
+    <string name="input_microphone">Mikrofon (akustisches Klavier)</string>
+    <string name="microphone">Mikrofon</string>
+    <string name="system_default">Systemstandard</string>
+    <string name="headphones">Ich verwende Kopfhörer</string>
+    <string name="headphones_on_hint">Gespielte Töne werden jederzeit erkannt.</string>
+    <string name="headphones_off_hint">Ohne Kopfhörer hört das Mikrofon die App mit. Mit „Gervill“ als MIDI-Ausgang zieht die App ihren eigenen Klang ab, sodass jeder Ton zählt (sie braucht zu Beginn einer Übung ein paar Töne, um deinen Raum zu lernen; bis dahin werden der Ton der App und seine Oktaven ignoriert, solange er klingt).</string>
+    <string name="octaves">Richtige Töne in anderer Oktave zählen</string>
+    <string name="octaves_hint">Die Erkennung verwechselt Oktaven viel öfter als du (tiefe Klaviertöne haben schwache Grundtöne).</string>
+    <string name="late_answers">Späte Antworten</string>
+    <string name="late_answers_hint">Ein Ton, den du bis zu so lange nach Beginn des nächsten Tons anschlägst, beantwortet noch den vorherigen, wenn der noch keine Antwort hatte.</string>
+    <string name="test_microphone">Mikrofon testen</string>
+    <string name="test_microphone_hint">Relativ zum Kammerton A. Der Pegel sollte sich beim Spielen deutlich bewegen.</string>
+    <string name="microphone_level">Mikrofonpegel</string>
+    <string name="midi_in">MIDI-Eingang (dein Keyboard)</string>
+    <string name="midi_out">MIDI-Ausgang (Klang)</string>
+    <string name="refresh_devices">Geräteliste aktualisieren</string>
+    <string name="devices_hint">Die Geräte werden beim Drücken von Start geöffnet. „Gervill“ ist der eingebaute Software-Synthesizer von Java.</string>
+    <string name="test_midi">MIDI testen</string>
+    <string name="play_test_note">Testton spielen</string>
+    <string name="midi_test_hint">„MIDI testen“ zeigt die Tasten, die vom MIDI-Eingang kommen; „Testton spielen“ spielt a′ auf dem MIDI-Ausgang, gestimmt auf den Kammerton A.</string>
+    <string name="midi_test_note">%1$s (%2$s, Anschlag %3$s)</string>
+    <string name="midi_test_before">Davor: %1$s</string>
+    <string name="reference_a">Kammerton A</string>
+    <string name="reset_440">Auf 440 Hz zurücksetzen</string>
+    <string name="tuning_hint">Verschiebt die gesamte Ausgabe per Pitch Bend; wirkt sofort, auch während einer Übung.</string>
+    <string name="recognition_microphone_only">Diese Einstellungen gelten nur für die Eingabe über das Mikrofon.</string>
+    <string name="record_exercises">Übungen aufnehmen</string>
+    <string name="record_exercises_hint">Speichert das Mikrofonsignal (WAV, etwa 5 MB pro Minute) und ein Protokoll der gespielten und erkannten Töne in %1$s, um die Erkennung mit echtem Klang abzustimmen.</string>
+    <string name="optimization_mode">Optimierungsmodus</string>
+    <string name="optimization_mode_hint">Zum Abstimmen der Erkennung: Jede Übung stoppt nach einer festen Zahl von Tönen von selbst und wird aufgenommen; danach listet der Üben-Bildschirm jeden Schritt, damit du melden kannst, wo du etwas anderes gespielt hast.</string>
+    <string name="stop_after">Stoppen nach</string>
+    <string name="value_notes">%1$s Tönen</string>
+    <string name="remove_own_sound">Eigenen Klang der App abziehen</string>
+    <string name="remove_own_sound_hint">Aus: Während die App einen Ton spielt, werden stattdessen dieser Ton und seine Oktaven ignoriert (zum Vergleich).</string>
+    <string name="section_parameters">Erkennungsparameter</string>
+    <string name="chords_for_voices">Akkorderkennung für %1$s Stimmen (Modus der Übung), getrennt von Einzeltönen.</string>
+    <string name="harmonic_method">Harmonisches Verfahren</string>
+    <string name="harmonic_method_hint">An: welche Teiltöne vorhanden sind, nach Ausgleich der Raumfärbung (robust gegen die Mikrofonposition). Aus: wie gut die Form des Spektrums zu Tonvorlagen passt (am besten direkt nach einer Kalibrierung).</string>
+    <string name="section_calibration">Klavier-Kalibrierung</string>
+    <string name="calibration_none">Nicht kalibriert: Die Akkorderkennung verwendet ein Klaviermodell.</string>
+    <string name="calibration_some">%1$s Töne von deinem Klavier gelernt.</string>
+    <string name="calibration_hint">Beim Kalibrieren wird jeder Ton des Umfangs (%1$s – %2$s) einmal abgefragt: jeden einzeln spielen, ohne Haltepedal; die App spielt währenddessen nichts.</string>
+    <string name="calibration_play">Spiel %1$s</string>
+    <string name="calibration_done">Fertig</string>
+    <string name="calibration_progress">%1$s von %2$s</string>
+    <string name="calibration_heard">%1$s gehört – bitte den gefragten Ton noch einmal spielen.</string>
+    <string name="calibrate">Klavier kalibrieren</string>
+    <string name="stop_calibration">Kalibrierung beenden</string>
+    <string name="forget_calibration">Kalibrierung vergessen</string>
+
+    <!-- Detection parameters (optimization mode) -->
+    <string name="p_noise_gate">Rauschschwelle</string>
+    <string name="p_noise_gate_hint">Mindestpegel eines Anschlags (RMS, Vollaussteuerung 1).</string>
+    <string name="p_onset_ratio">Anschlagsverhältnis</string>
+    <string name="p_onset_ratio_hint">Wie stark ein Anschlag den Pegel über die Momente davor heben muss.</string>
+    <string name="p_min_clarity">Min. Klarheit</string>
+    <string name="p_min_clarity_hint">Wie periodisch ein Fenster sein muss, damit seine Tonhöhe zählt.</string>
+    <string name="p_confirm_windows">Bestätigungsfenster</string>
+    <string name="p_confirm_windows_hint">Analysefenster, die sich über den Ton einig sein müssen.</string>
+    <string name="p_peak_threshold">Spitzenschwelle</string>
+    <string name="p_peak_threshold_hint">Niedriger: weniger Fehler eine Oktave zu tief, mehr eine Oktave zu hoch.</string>
+    <string name="p_over_subtraction">Überabzug</string>
+    <string name="p_over_subtraction_hint">Sicherheitsfaktor auf den vorhergesagten eigenen Klang der App.</string>
+    <string name="p_reverb_decay">Nachhall-Abklingen</string>
+    <string name="p_reverb_decay_hint">Langsamstes Abklingen des eigenen Klangs pro 11,6 ms (der Nachhall des Raums).</string>
+    <string name="p_level_rise">Pegelanstieg</string>
+    <string name="p_level_rise_hint">Über dem Klang der App muss ein Anschlag den Gesamtpegel um diesen Faktor heben.</string>
+    <string name="p_own_sound_share">Eigenklang-Anteil</string>
+    <string name="p_own_sound_share_hint">Wo der Ton der App beginnt, muss ein Anschlag diesen Anteil davon übertreffen.</string>
+    <string name="p_fallback_margin">Ersatz-Abstand</string>
+    <string name="p_fallback_margin_hint">Bis der eigene Klang gelernt ist, müssen Anschläge so viel lauter sein als das Mikrofon, während die App spielt.</string>
+    <string name="p_follow_up_rise">Folgeanstieg</string>
+    <string name="p_follow_up_rise_hint">Innerhalb von 400 ms nach einem erkannten Ton muss ein neuer Anschlag über dem Klang der App den Pegel um diesen Faktor heben (gegen Schwebungen).</string>
+    <string name="p_window_end">Fensterende</string>
+    <string name="p_window_end_hint">Wie lange nach einem Anschlag das Spektrum gemittelt wird (ms): länger trennt Basstöne besser.</string>
+    <string name="p_chord_spread">Akkordstreuung</string>
+    <string name="p_chord_spread_hint">So nah beieinander liegende Anschläge (ms) sind ein Akkord.</string>
+    <string name="p_note_penalty">Tonstrafe</string>
+    <string name="p_note_penalty_hint">Höher: bevorzugt weniger Töne (gegen zusätzliche Töne; zu hoch übersieht Töne).</string>
+    <string name="p_min_note_share">Min. Tonanteil</string>
+    <string name="p_min_note_share_hint">Ein Ton muss diesen Anteil der Energie eines Akkords tragen, um zu zählen.</string>
+    <string name="p_given_bias">Vorgabe-Neigung</string>
+    <string name="p_given_bias_hint">Über 0 neigt zu „wie vorgegeben gespielt“ (weniger falsche Fehler, mehr übersehene).</string>
+    <string name="p_background_weight">Hintergrund-Gewicht</string>
+    <string name="p_background_weight_hint">Wie viel von dem, was vor dem Anschlag klang, abgezogen wird.</string>
+    <string name="p_min_new_share">Min. neuer Anteil</string>
+    <string name="p_min_new_share_hint">Anteil des Pegels, der neu sein muss (gegen Schwebungen naher Töne).</string>
+    <string name="p_whitening">Aufhellungsbreite</string>
+    <string name="p_whitening_hint">Harmonisch: Breite (Halbtöne) der Hüllkurve, die die Raumfärbung ausgleicht.</string>
+    <string name="p_presence">Präsenz</string>
+    <string name="p_presence_hint">Harmonisch: Ein Teilton gilt als vorhanden, wenn er so viel über seiner Umgebung liegt.</string>
+    <string name="p_missing_penalty">Fehlstrafe</string>
+    <string name="p_missing_penalty_hint">Harmonisch: pro erwartetem Teilton, der fehlt (entscheidet Oktaven).</string>
+    <string name="p_chance_weight">Zufallsgewicht</string>
+    <string name="p_chance_weight_hint">Harmonisch: wie stark die dichten Teiltöne tiefer Töne abgewertet werden, weil sie Spitzen zufällig treffen.</string>
+
+    <!-- Run summary (optimization mode) -->
+    <string name="run_summary_title">Letzter Durchlauf, Schritt für Schritt</string>
+    <string name="run_summary_hint">Melde die Nummern der Schritte, bei denen du etwas anderes als vorgegeben (oder nichts) gespielt hast.</string>
+    <string name="run_summary_given">Vorgabe</string>
+    <string name="run_summary_heard">Gehört</string>
+    <string name="run_summary_recording">Aufnahme: %1$s</string>
+
+    <!-- Messages -->
+    <string name="msg_midi_connected">MIDI verbunden: %1$s</string>
+    <string name="msg_midi_disconnected">MIDI getrennt: %1$s</string>
+    <string name="msg_restart_to_use">Stoppe die Übung und starte sie neu, um es zu verwenden.</string>
+    <string name="msg_open_setup_failed">Setup „%1$s“ konnte nicht geöffnet werden: %2$s</string>
+    <string name="msg_import_failed">Import fehlgeschlagen: %1$s</string>
+    <string name="msg_imported">„%1$s“ mit %2$s gelernten Sequenzen importiert.</string>
+    <string name="msg_imported_reference_a">Kammerton A auf %1$s Hz gesetzt.</string>
+    <string name="msg_mode_not_implemented">Dieser Modus ist nicht umgesetzt (auch nicht in der Java-Version).</string>
+    <string name="msg_open_input_failed">Die Eingabe konnte nicht geöffnet werden: %1$s</string>
+    <string name="msg_no_midi_input">Kein MIDI-Eingang gefunden. Schließe dein Keyboard an und wähle es in den Einstellungen.</string>
+    <string name="msg_no_midi_output">Kein MIDI-Ausgang gefunden.</string>
+    <string name="msg_recording_saved">Aufnahme gespeichert: %1$s</string>
+    <string name="msg_recording_failed">Die Aufnahme konnte nicht gespeichert werden: %1$s</string>
+    <string name="msg_own_sound_failed">Der eigene Klang der App kann nicht abgezogen werden (%1$s); passende Eingaben werden ignoriert, solange sie spielt.</string>
+    <string name="msg_open_microphone_failed">Das Mikrofon konnte nicht geöffnet werden: %1$s</string>
+    <string name="msg_calibrated">Klavier kalibriert: %1$s Töne.</string>
+    <string name="msg_open_midi_input_failed">Der MIDI-Eingang konnte nicht geöffnet werden: %1$s</string>
+    <string name="msg_open_midi_output_failed">Der MIDI-Ausgang konnte nicht geöffnet werden: %1$s</string>
+    <string name="msg_error">Etwas ist schiefgegangen: %1$s</string>
+    <string name="msg_save_failed">„%1$s“ konnte nicht gespeichert werden: %2$s</string>
+</resources>

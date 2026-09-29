@@ -1,0 +1,234 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Navigation -->
+    <string name="nav_practice">Practice</string>
+    <string name="nav_memory">Memory</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- Common -->
+    <string name="back">Back</string>
+    <string name="close">Close</string>
+    <string name="cancel">Cancel</string>
+    <string name="save">Save</string>
+    <string name="delete">Delete</string>
+    <string name="more_options">More options</string>
+    <string name="reset_defaults">Reset to defaults</string>
+    <string name="stop_test">Stop test</string>
+    <string name="play_a_key">Play a key…</string>
+    <string name="no_device">No device found</string>
+    <string name="value_seconds">%1$s s</string>
+    <string name="value_ms">%1$s ms</string>
+    <string name="value_hz">%1$s Hz</string>
+    <string name="decrease">Decrease %1$s</string>
+    <string name="increase">Increase %1$s</string>
+
+    <!-- Setups -->
+    <string name="setup_choose">Choose setup, current: %1$s</string>
+    <string name="setup_save_as">Save setup as…</string>
+    <string name="setup_import">Import setup from MusicBootCamp (Java)…</string>
+    <string name="setup_delete">Delete this setup…</string>
+    <string name="setup_save_as_title">Save setup as</string>
+    <string name="setup_name">Name</string>
+    <string name="setup_copy_name">%1$s copy</string>
+    <string name="setup_delete_title">Delete “%1$s”?</string>
+    <string name="setup_delete_text">Its settings and all its learned sequences are deleted. This cannot be undone.</string>
+
+    <!-- Practice -->
+    <string name="practice_summary">%1$s · %2$s – %3$s · every %4$s s</string>
+    <string name="practice_idle">Press Start to begin</string>
+    <string name="practice_listen">Listen and play along</string>
+    <string name="practice_correct">Correct</string>
+    <string name="practice_wrong">Wrong</string>
+    <string name="practice_given_notes">Given notes</string>
+    <string name="stat_steps">Steps</string>
+    <string name="stat_correct">Correct</string>
+    <string name="stat_wrong">Wrong</string>
+    <string name="stat_stored">Stored</string>
+    <string name="start">Start</string>
+    <string name="stop">Stop</string>
+    <string name="show_notes">Show notes</string>
+    <string name="customize_exercise">Customize exercise</string>
+    <string name="exercise">Exercise</string>
+    <string name="stop_to_change">Stop the exercise to change its settings.</string>
+
+    <!-- Exercise settings -->
+    <string name="section_mode">Mode</string>
+    <string name="mode_monophonic">Single notes</string>
+    <string name="mode_two_voices">Two voices, random</string>
+    <string name="mode_homophonic">Homophonic modes (not implemented)</string>
+    <string name="mode_hint">Each mode keeps its own learned sequences.</string>
+    <string name="section_tempo">Tempo</string>
+    <string name="breathing_time">Breathing time</string>
+    <string name="breathing_time_hint">Time from one step to the next.</string>
+    <string name="sustain">Note length</string>
+    <string name="sustain_hint">How long the app holds its note, in percent of the breathing time.</string>
+    <string name="velocity">Velocity</string>
+    <string name="velocity_hint">How hard the app strikes its notes (1–127).</string>
+    <string name="section_range">Range</string>
+    <string name="range">From %1$s to %2$s</string>
+    <string name="range_hint">At least %1$s semitones. Exercises start at %2$s.</string>
+    <string name="section_intervals">Intervals</string>
+    <string name="intervals_hint">How often each interval is chosen for a random step (0 = never).</string>
+    <string name="intervals_problem">Give at least one interval a weight above 0.</string>
+    <string name="section_sequences">Your sequences</string>
+    <string name="memorized_share">Memorized sequences</string>
+    <string name="memorized_hint">Share of the steps that replay a sequence you got wrong before (%1$s stored for this mode).</string>
+    <string name="section_direction">Direction</string>
+    <string name="direction_linear">Linear</string>
+    <string name="direction_random">Random</string>
+    <string name="direction_alternating">Alternating</string>
+    <string name="direction_hint">Stored with the setup; the exercise does not use it yet (neither did the Java version).</string>
+
+    <!-- Memory -->
+    <string name="section_learning">Learning</string>
+    <string name="learn_new">Learn new sequences</string>
+    <string name="learn_new_hint">When you play a step wrong, the steps before it are stored and come back later.</string>
+    <string name="remember">Remember</string>
+    <string name="value_steps">%1$s steps</string>
+    <string name="transpositions">Transpositions</string>
+    <string name="transpositions_hint">Stored with the setup; the exercise does not use it yet (neither did the Java version).</string>
+    <string name="section_learned">Learned sequences · %1$s</string>
+    <string name="level_first">Level 1 · newest, most often</string>
+    <string name="level">Level %1$s</string>
+    <string name="level_last">Level 5 · almost mastered</string>
+    <string name="total">Total: %1$s</string>
+    <string name="outside_range">%1$s of them reach outside the current range and are skipped until the range covers them again.</string>
+    <string name="levels_hint">New mistakes start at level 1. Each time a sequence is practised it moves one level on, and after the last level it is forgotten. Lower levels come back more often.</string>
+    <string name="forget_all">Forget all sequences of this mode…</string>
+    <string name="forget_title">Forget %1$s sequences?</string>
+    <string name="forget_text">All learned sequences of the mode “%1$s” in this setup are deleted.</string>
+    <string name="forget">Forget</string>
+
+    <!-- Settings -->
+    <string name="settings_input">Input</string>
+    <string name="settings_midi">MIDI devices</string>
+    <string name="settings_tuning">Tuning</string>
+    <string name="settings_recognition">Recognition</string>
+    <string name="settings_recognition_summary">Tuning the microphone recognition</string>
+    <string name="input_source">Play on</string>
+    <string name="input_midi">MIDI keyboard</string>
+    <string name="input_microphone">Microphone (acoustic piano)</string>
+    <string name="microphone">Microphone</string>
+    <string name="system_default">System default</string>
+    <string name="headphones">I use headphones</string>
+    <string name="headphones_on_hint">Notes you play are recognised at any time.</string>
+    <string name="headphones_off_hint">Without headphones the microphone hears the app too. With “Gervill” as MIDI Out the app removes its own sound, so every note counts (it needs a few notes at the start of an exercise to learn your room; until then the note the app is playing and its octaves are ignored while it sounds).</string>
+    <string name="octaves">Right notes in another octave count</string>
+    <string name="octaves_hint">The recognition mistakes octaves far more often than you do (a piano’s low notes have weak fundamentals).</string>
+    <string name="late_answers">Late answers</string>
+    <string name="late_answers_hint">A note you strike up to this long after the next note has started still answers the note before, if that had no answer yet.</string>
+    <string name="test_microphone">Test microphone</string>
+    <string name="test_microphone_hint">Relative to the reference A. The level bar should move clearly when you play.</string>
+    <string name="microphone_level">Microphone level</string>
+    <string name="midi_in">MIDI In (your keyboard)</string>
+    <string name="midi_out">MIDI Out (sound)</string>
+    <string name="refresh_devices">Refresh device list</string>
+    <string name="devices_hint">Devices are opened when you press Start. “Gervill” is Java’s built-in software synthesizer.</string>
+    <string name="test_midi">Test MIDI</string>
+    <string name="play_test_note">Play test note</string>
+    <string name="midi_test_hint">“Test MIDI” shows the keys arriving from MIDI In; “Play test note” plays A′ on MIDI Out, tuned to the reference A.</string>
+    <string name="midi_test_note">%1$s (%2$s, velocity %3$s)</string>
+    <string name="midi_test_before">Before: %1$s</string>
+    <string name="reference_a">Reference A</string>
+    <string name="reset_440">Reset to 440 Hz</string>
+    <string name="tuning_hint">Shifts the whole output by a pitch bend; applied immediately, also during an exercise.</string>
+    <string name="recognition_microphone_only">These settings only apply to microphone input.</string>
+    <string name="record_exercises">Record exercises</string>
+    <string name="record_exercises_hint">Saves the microphone signal (WAV, about 5 MB per minute) and a log of the notes played and recognised to %1$s, to tune the recognition with real sound.</string>
+    <string name="optimization_mode">Optimization mode</string>
+    <string name="optimization_mode_hint">For tuning the recognition: every exercise stops by itself after a number of notes and is recorded; afterwards the Practice screen lists each step, so you can report where you played something else.</string>
+    <string name="stop_after">Stop after</string>
+    <string name="value_notes">%1$s notes</string>
+    <string name="remove_own_sound">Remove the app’s own sound</string>
+    <string name="remove_own_sound_hint">Off: while the app plays a note, that note and its octaves are ignored instead (for comparison).</string>
+    <string name="section_parameters">Detection parameters</string>
+    <string name="chords_for_voices">Chord recognition for %1$s voices (the exercise’s mode), set apart from single notes.</string>
+    <string name="harmonic_method">Harmonic method</string>
+    <string name="harmonic_method_hint">On: which partials are there, after levelling out the room (robust to where the microphone stands). Off: how the spectrum’s shape matches note templates (best right after a calibration).</string>
+    <string name="section_calibration">Piano calibration</string>
+    <string name="calibration_none">Not calibrated: the chord recognition uses a piano model.</string>
+    <string name="calibration_some">%1$s notes learned from your piano.</string>
+    <string name="calibration_hint">Calibrating asks for every note of the range (%1$s – %2$s) once: play each alone, with the sustain pedal up; the app plays nothing meanwhile.</string>
+    <string name="calibration_play">Play %1$s</string>
+    <string name="calibration_done">Done</string>
+    <string name="calibration_progress">%1$s of %2$s</string>
+    <string name="calibration_heard">Heard %1$s – please play the asked note again.</string>
+    <string name="calibrate">Calibrate piano</string>
+    <string name="stop_calibration">Stop calibration</string>
+    <string name="forget_calibration">Forget calibration</string>
+
+    <!-- Detection parameters (optimization mode) -->
+    <string name="p_noise_gate">Noise gate</string>
+    <string name="p_noise_gate_hint">Minimum level of a stroke (RMS, full scale 1).</string>
+    <string name="p_onset_ratio">Onset ratio</string>
+    <string name="p_onset_ratio_hint">How much a stroke must raise the level above the moments before it.</string>
+    <string name="p_min_clarity">Min. clarity</string>
+    <string name="p_min_clarity_hint">How periodic a window must be for its pitch to count.</string>
+    <string name="p_confirm_windows">Confirm windows</string>
+    <string name="p_confirm_windows_hint">Analysis windows that must agree on the note.</string>
+    <string name="p_peak_threshold">Peak threshold</string>
+    <string name="p_peak_threshold_hint">Lower: fewer octave-down errors, more octave-up errors.</string>
+    <string name="p_over_subtraction">Over-subtraction</string>
+    <string name="p_over_subtraction_hint">Safety factor on the app’s predicted own sound.</string>
+    <string name="p_reverb_decay">Reverb decay</string>
+    <string name="p_reverb_decay_hint">Slowest decay of the own sound per 11.6 ms (the room’s reverberation).</string>
+    <string name="p_level_rise">Level rise</string>
+    <string name="p_level_rise_hint">Over the app’s sound, a stroke must raise the total level by this factor.</string>
+    <string name="p_own_sound_share">Own-sound share</string>
+    <string name="p_own_sound_share_hint">Where the app’s note starts, a stroke must exceed this share of it.</string>
+    <string name="p_fallback_margin">Fallback margin</string>
+    <string name="p_fallback_margin_hint">Until the own sound is learned, strokes must be this many times louder than the microphone while the app plays.</string>
+    <string name="p_follow_up_rise">Follow-up rise</string>
+    <string name="p_follow_up_rise_hint">Within 400 ms after a recognised note, a new stroke over the app’s sound must raise the level by this factor (against beating).</string>
+    <string name="p_window_end">Window end</string>
+    <string name="p_window_end_hint">How long after a stroke the spectrum is averaged (ms): longer separates bass notes better.</string>
+    <string name="p_chord_spread">Chord spread</string>
+    <string name="p_chord_spread_hint">Strokes this close together (ms) are one chord.</string>
+    <string name="p_note_penalty">Note penalty</string>
+    <string name="p_note_penalty_hint">Higher: prefers fewer notes (against extra notes; too high misses notes).</string>
+    <string name="p_min_note_share">Min. note share</string>
+    <string name="p_min_note_share_hint">A note must carry this share of a chord’s energy to count.</string>
+    <string name="p_given_bias">Given bias</string>
+    <string name="p_given_bias_hint">Above 0 leans towards “played as given” (fewer false mistakes, more missed ones).</string>
+    <string name="p_background_weight">Background weight</string>
+    <string name="p_background_weight_hint">How much of what rang before the stroke is removed.</string>
+    <string name="p_min_new_share">Min. new share</string>
+    <string name="p_min_new_share_hint">Share of the level that must be new (against beating of close notes).</string>
+    <string name="p_whitening">Whitening width</string>
+    <string name="p_whitening_hint">Harmonic: width (semitones) of the envelope that levels out the room’s colouring.</string>
+    <string name="p_presence">Presence</string>
+    <string name="p_presence_hint">Harmonic: a partial counts as there this many times above its surroundings.</string>
+    <string name="p_missing_penalty">Missing penalty</string>
+    <string name="p_missing_penalty_hint">Harmonic: per expected partial that is not there (settles octaves).</string>
+    <string name="p_chance_weight">Chance weight</string>
+    <string name="p_chance_weight_hint">Harmonic: how much a deep note’s dense partials are discounted for catching peaks by chance.</string>
+
+    <!-- Run summary (optimization mode) -->
+    <string name="run_summary_title">Last run, step by step</string>
+    <string name="run_summary_hint">Report the numbers of the steps where you played something other than the given notes (or nothing).</string>
+    <string name="run_summary_given">Given</string>
+    <string name="run_summary_heard">Heard</string>
+    <string name="run_summary_recording">Recording: %1$s</string>
+
+    <!-- Messages -->
+    <string name="msg_midi_connected">MIDI connected: %1$s</string>
+    <string name="msg_midi_disconnected">MIDI disconnected: %1$s</string>
+    <string name="msg_restart_to_use">Stop and restart the exercise to use it.</string>
+    <string name="msg_open_setup_failed">Could not open setup “%1$s”: %2$s</string>
+    <string name="msg_import_failed">Import failed: %1$s</string>
+    <string name="msg_imported">Imported “%1$s” with %2$s learned sequences.</string>
+    <string name="msg_imported_reference_a">Reference A set to %1$s Hz.</string>
+    <string name="msg_mode_not_implemented">This mode is not implemented (it was not in the Java version either).</string>
+    <string name="msg_open_input_failed">Could not open the input: %1$s</string>
+    <string name="msg_no_midi_input">No MIDI input device found. Connect your keyboard and choose it in the settings.</string>
+    <string name="msg_no_midi_output">No MIDI output device found.</string>
+    <string name="msg_recording_saved">Recording saved: %1$s</string>
+    <string name="msg_recording_failed">Could not save the recording: %1$s</string>
+    <string name="msg_own_sound_failed">The app’s own sound cannot be removed (%1$s); input matching it is ignored while it plays.</string>
+    <string name="msg_open_microphone_failed">Could not open the microphone: %1$s</string>
+    <string name="msg_calibrated">Piano calibrated: %1$s notes.</string>
+    <string name="msg_open_midi_input_failed">Could not open the MIDI input: %1$s</string>
+    <string name="msg_open_midi_output_failed">Could not open the MIDI output: %1$s</string>
+    <string name="msg_error">Something went wrong: %1$s</string>
+    <string name="msg_save_failed">Could not save “%1$s”: %2$s</string>
+</resources>

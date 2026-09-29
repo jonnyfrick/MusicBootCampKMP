@@ -12,6 +12,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.swing)
 
     testImplementation(libs.kotlin.test)
+    testImplementation(libs.compose.uiTest)
 }
 
 compose.desktop {

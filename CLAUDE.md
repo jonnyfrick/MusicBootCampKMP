@@ -50,7 +50,8 @@ duplicate them here.
 ./gradlew :core:jvmTest :app:shared:jvmTest :app:desktopApp:test
 ```
 
-- UI changes: `ScreenshotTest` renders every tab into `app/desktopApp/build/screenshots` — look at
+- UI changes: `ScreenshotTest` renders every screen in phone, tablet and desktop sizes into
+  `app/desktopApp/build/screenshots` — look at
   the PNGs, not only at the test result.
 - Changes to `commonMain`: also compile the other targets, e.g.
   `./gradlew :app:shared:compileKotlinJs :app:shared:compileKotlinWasmJs :app:shared:compileAndroidMain`.

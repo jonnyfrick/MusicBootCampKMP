@@ -3,6 +3,7 @@ package io.github.jonnyfrick.musicbootcamp.ui
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import io.github.jonnyfrick.musicbootcamp.resources.*
 import io.github.jonnyfrick.musicbootcamp.core.audio.SessionRecorder
 import io.github.jonnyfrick.musicbootcamp.core.audio.StepSummary
 import io.github.jonnyfrick.musicbootcamp.core.learning.LearnedSequences
@@ -97,7 +98,7 @@ class AppController(
         private set
 
     /** A message for the user (snackbar); cleared by [dismissMessage]. */
-    var message by mutableStateOf<String?>(null)
+    var message by mutableStateOf<UiText?>(null)
         private set
 
     /** True from "Go" until the exercise has stopped and everything is saved. */
@@ -183,11 +184,13 @@ class AppController(
         val added = after - before
         val removed = before - after
         if (added.isEmpty() && removed.isEmpty()) return
-        message = buildList {
-            if (added.isNotEmpty()) add("MIDI connected: ${added.joinToString()}")
-            if (removed.isNotEmpty()) add("MIDI disconnected: ${removed.joinToString()}")
-            if (running) add("Stop and restart the exercise to use it.")
-        }.joinToString(". ")
+        message = UiText.Joined(
+            buildList {
+                if (added.isNotEmpty()) add(text(Res.string.msg_midi_connected, added.joinToString()))
+                if (removed.isNotEmpty()) add(text(Res.string.msg_midi_disconnected, removed.joinToString()))
+                if (running) add(text(Res.string.msg_restart_to_use))
+            },
+        )
     }
 
     // ------------------------------------------------------------------ setups
@@ -204,7 +207,7 @@ class AppController(
         launchSafely {
             saveNow()
             val loaded = runCatching { repository.load(name) }.getOrElse {
-                message = "Could not open setup '$name': ${it.message}"
+                message = text(Res.string.msg_open_setup_failed, name, it.toUiText())
                 null
             } ?: return@launchSafely
             setup = loaded
@@ -254,14 +257,14 @@ class AppController(
         if (running) return
         launchSafely {
             val selection = runCatching { picker.pickSettingsFile() }.getOrElse {
-                message = "Import failed: ${it.message}"
+                message = text(Res.string.msg_import_failed, it.toUiText())
                 null
             } ?: return@launchSafely
             saveNow()
             val name = uniqueName(SetupRepository.sanitizeName(selection.suggestedName))
             val result = runCatching { LegacyImport.importSetup(name, selection.settingsXml, selection.readSibling) }
                 .getOrElse {
-                    message = "Import failed: ${it.message}"
+                    message = text(Res.string.msg_import_failed, it.toUiText())
                     return@launchSafely
                 }
             setup = result.setup
@@ -271,13 +274,13 @@ class AppController(
             result.legacySettings.referenceAHz?.let { reference -> updatePreferences { it.copy(referenceAHz = reference) } }
             updatePreferences { it.copy(lastSetup = name) }
 
-            message = buildString {
-                append("Imported '$name' with ${setup.memory().size} learned sequences")
-                result.learnedSequencesFileName?.let { append(" from $it") }
-                append('.')
-                result.legacySettings.referenceAHz?.let { append(" Kammerton A set to $it Hz.") }
-                if (result.warnings.isNotEmpty()) append(' ').append(result.warnings.joinToString(" "))
-            }
+            message = UiText.Joined(
+                buildList {
+                    add(text(Res.string.msg_imported, name, setup.memory().size))
+                    result.legacySettings.referenceAHz?.let { add(text(Res.string.msg_imported_reference_a, it)) }
+                    result.warnings.forEach { add(UiText.Raw(it)) }
+                },
+            )
         }
     }
 
@@ -288,10 +291,10 @@ class AppController(
         if (running) return
         val microphone = preferences.inputSource == InputSource.MICROPHONE
         val problem = when {
-            services.midi.unavailableReason != null -> services.midi.unavailableReason
-            microphone && services.audio.unavailableReason != null -> services.audio.unavailableReason
-            !settings.mode.isImplemented -> "The mode '${settings.mode.legacyId}' is not implemented (it was not in the Java version either)."
-            settings.intervalPriorities.all { it == 0 } -> "Give at least one interval a weight above 0."
+            services.midi.unavailableReason != null -> services.midi.unavailableReason?.let(UiText::Raw)
+            microphone && services.audio.unavailableReason != null -> services.audio.unavailableReason?.let(UiText::Raw)
+            !settings.mode.isImplemented -> text(Res.string.msg_mode_not_implemented)
+            settings.intervalPriorities.all { it == 0 } -> text(Res.string.intervals_problem)
             else -> null
         }
         if (problem != null) {
@@ -305,7 +308,7 @@ class AppController(
         saveJob?.cancel()
         val input = runCatching { if (microphone) openMicrophoneInput(settings) else openMidiInput() }.getOrElse {
             closePorts()
-            message = "Could not open the input: ${it.message}"
+            message = text(Res.string.msg_open_input_failed, it.toUiText())
             return
         }
         val practiceOutput = (gate ?: output!!).let { port -> recorder?.recording(port) ?: port }
@@ -378,7 +381,7 @@ class AppController(
     private fun openMidiInput(): Flow<MidiMessage> {
         openOutput()
         val inputName = preferences.midiInputDevice?.takeIf { it in inputDevices } ?: defaultDevice(inputDevices)
-            ?: error("No MIDI input device found. Connect your keyboard and choose it in Preferences.")
+            ?: throw UserError(text(Res.string.msg_no_midi_input))
         val input = services.midi.openInput(inputName)
         closers += input::close
         return input.messages
@@ -451,10 +454,10 @@ class AppController(
         recorder = null
         runCatching { withContext(Dispatchers.Default) { recording.finish(recordingInfo) } }
             .onSuccess {
-                message = "Recording saved: ${recording.name}"
+                message = text(Res.string.msg_recording_saved, recording.name)
                 if (preferences.optimizationMode) runSummary = RunSummary(recording.name, recording.summary())
             }
-            .onFailure { message = "Could not save the recording: ${it.message}" }
+            .onFailure { message = text(Res.string.msg_recording_failed, it.toUiText()) }
     }
 
     /**
@@ -466,7 +469,7 @@ class AppController(
         refreshDevices()
         if (selectedOutputDevice() != synth.deviceName) return null
         val port = runCatching { synth.open(sampleRate) }.getOrElse {
-            message = "The app's own sound cannot be removed (${it.message}); input matching it is ignored while it plays."
+            message = text(Res.string.msg_own_sound_failed, it.toUiText())
             return null
         }
         output = port
@@ -479,7 +482,7 @@ class AppController(
 
     private fun openOutput(): MidiOutputPort {
         refreshDevices()
-        val outputName = selectedOutputDevice() ?: error("No MIDI output device found.")
+        val outputName = selectedOutputDevice() ?: throw UserError(text(Res.string.msg_no_midi_output))
         val port = services.midi.openOutput(outputName)
         output = port
         Tuning.messages(preferences.referenceAHz).forEach(port::send)
@@ -500,7 +503,7 @@ class AppController(
     fun startMicTest() {
         if (running || micTesting) return
         val audio = runCatching { services.audio.open(preferences.audioInputDevice) }.getOrElse {
-            message = "Could not open the microphone: ${it.message}"
+            message = text(Res.string.msg_open_microphone_failed, it.toUiText())
             return
         }
         micTestPort = audio
@@ -543,7 +546,7 @@ class AppController(
         if (running || calibrating) return
         stopMicTest()
         val audio = runCatching { services.audio.open(preferences.audioInputDevice) }.getOrElse {
-            message = "Could not open the microphone: ${it.message}"
+            message = text(Res.string.msg_open_microphone_failed, it.toUiText())
             return
         }
         calibrationPort = audio
@@ -571,7 +574,7 @@ class AppController(
                         if (target == null) {
                             learnedTemplates = calibration.result()
                             repository.saveTemplates(learnedTemplates)
-                            message = "Piano calibrated: ${learnedTemplates.notes.size} notes."
+                            message = text(Res.string.msg_calibrated, learnedTemplates.notes.size)
                             throw CancellationException("done")
                         }
                     }
@@ -610,10 +613,10 @@ class AppController(
         refreshDevices()
         val input = runCatching {
             val name = preferences.midiInputDevice?.takeIf { it in inputDevices } ?: defaultDevice(inputDevices)
-                ?: error("No MIDI input device found.")
+                ?: throw UserError(text(Res.string.msg_no_midi_input))
             services.midi.openInput(name)
         }.getOrElse {
-            message = "Could not open the MIDI input: ${it.message}"
+            message = text(Res.string.msg_open_midi_input_failed, it.toUiText())
             return
         }
         midiTestInput = input
@@ -642,10 +645,10 @@ class AppController(
         val output = midiTestOutput ?: runCatching {
             refreshDevices()
             val name = preferences.midiOutputDevice?.takeIf { it in outputDevices } ?: defaultDevice(outputDevices)
-                ?: error("No MIDI output device found.")
+                ?: throw UserError(text(Res.string.msg_no_midi_output))
             services.midi.openOutput(name)
         }.getOrElse {
-            message = "Could not open the MIDI output: ${it.message}"
+            message = text(Res.string.msg_open_midi_output_failed, it.toUiText())
             return
         }
         // Kept open while the test runs; otherwise closed again after the note.
@@ -726,10 +729,6 @@ class AppController(
     fun defaultDevice(devices: List<String>): String? =
         devices.firstOrNull { it != JAVA_SEQUENCER } ?: devices.firstOrNull()
 
-    fun showMessage(text: String) {
-        message = text
-    }
-
     fun dismissMessage() {
         message = null
     }
@@ -753,7 +752,7 @@ class AppController(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            message = "Something went wrong: ${e.message ?: e::class.simpleName}"
+            message = text(Res.string.msg_error, e.toUiText())
         }
     }
 
@@ -775,7 +774,7 @@ class AppController(
 
     private suspend fun saveNow() {
         saveJob?.cancel()
-        runCatching { repository.save(setup) }.onFailure { message = "Could not save '${setup.name}': ${it.message}" }
+        runCatching { repository.save(setup) }.onFailure { message = text(Res.string.msg_save_failed, setup.name, it.toUiText()) }
     }
 
     private fun uniqueName(base: String): String {

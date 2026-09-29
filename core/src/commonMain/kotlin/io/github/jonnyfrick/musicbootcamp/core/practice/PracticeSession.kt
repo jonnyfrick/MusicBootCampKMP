@@ -37,6 +37,13 @@ data class Evaluation(
 )
 
 /**
+ * Whether step [step] (0-based, in the order given) was played right: known as soon as its answer
+ * is, for feedback, before the step is evaluated (which may wait for the next step). [missed]: it
+ * counts as wrong because nothing was played (or heard) at all.
+ */
+data class StepVerdict(val step: Int, val correct: Boolean, val missed: Boolean = false)
+
+/**
  * One exercise run without any timing: [step] is what the Java `TimerTask`s did
  * on every tick, [onMidiInput] what the MIDI receiver did. [PracticeRunner] adds
  * the clock; tests drive it directly.
@@ -70,6 +77,17 @@ class PracticeSession(
     /** Note-ons of a chord answer still arriving (a recognised chord comes as one note-on per voice). */
     private val chordBuffer = mutableListOf<Int>()
 
+    private val verdicts = mutableListOf<StepVerdict>()
+
+    /** The last verdict announced on a key press, so further presses that change nothing are quiet. */
+    private var announced: StepVerdict? = null
+
+    /**
+     * The verdicts since the last call, oldest first: an answer's as soon as it is certain, and
+     * each evaluation's (which may still differ, e.g. a second key press on a unison).
+     */
+    fun takeVerdicts(): List<StepVerdict> = verdicts.toList().also { verdicts.clear() }
+
     private class OpenStep(val number: Int, val given: List<Int>) {
         var answer: List<Int>? = null
         /** Answered, or given up (its time is over, or a later step got the answer). */
@@ -89,6 +107,11 @@ class PracticeSession(
         if (!message.isNoteOn) return emptyList()
         if (!deferring) {
             corrector.addRecorded(message.data1)
+            val verdict = corrector.verdict()?.let { StepVerdict(steps - 1, it) }
+            if (steps > 0 && verdict != null && verdict != announced) {
+                verdicts += verdict
+                announced = verdict
+            }
             return emptyList()
         }
         chordBuffer += message.data1
@@ -112,7 +135,9 @@ class PracticeSession(
         }
         target.answer = answer
         target.resolved = true
-        return evaluateResolved()
+        return evaluateResolved().also {
+            Corrector.judge(settings.mode, target.given, answer)?.let { verdicts += StepVerdict(target.number, it) }
+        }
     }
 
     /** The tolerance of step [number] is over: it (and older open steps) counts as missed if unanswered. */
@@ -142,7 +167,7 @@ class PracticeSession(
         val defer = deferEvaluation
         var leftOpen: Int? = null
         val evaluation = if (!defer) {
-            evaluate()
+            evaluate(steps - 1)
         } else {
             deferring = true
             val current = open.lastOrNull()
@@ -178,7 +203,7 @@ class PracticeSession(
      */
     fun end(): List<Evaluation> {
         if (steps == 0) return emptyList()
-        if (!deferring) return listOf(evaluate())
+        if (!deferring) return listOf(evaluate(steps - 1))
         open.forEach { it.resolved = true }
         return buildList { while (open.isNotEmpty()) add(evaluateStep(open.removeFirst())) }
     }
@@ -196,11 +221,14 @@ class PracticeSession(
         startGiven(step.given)
         corrector.resetRecorded()
         step.answer?.forEach { corrector.addRecorded(it) }
-        return evaluate()
+        return evaluate(step.number)
     }
 
-    private fun evaluate(): Evaluation {
+    /** Evaluates step [number] (-1: before the first step, nothing to evaluate yet). */
+    private fun evaluate(number: Int): Evaluation {
+        val missed = corrector.nothingRecorded()
         val correct = corrector.correct()
+        if (number >= 0) verdicts += StepVerdict(number, correct, missed = missed && !correct)
         var stored = false
         if (!correct && settings.learnNewSequences) {
             val predecessors = corrector.predecessors()

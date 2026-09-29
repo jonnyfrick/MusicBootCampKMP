@@ -32,6 +32,8 @@ data class PracticeStatus(
     val storedMistakes: Int = 0,
     val given: List<Int> = emptyList(),
     val lastCorrect: Boolean? = null,
+    /** The newest step whose answer is judged, right away and not only when it is evaluated. */
+    val lastResult: StepVerdict? = null,
     /** A run with a fixed number of notes has given and evaluated all of them. */
     val finished: Boolean = false,
 )
@@ -76,7 +78,10 @@ class PracticeRunner(
         if (jobs.isNotEmpty()) return
         _status.value = PracticeStatus(running = true)
         val inputJob = scope.launch(sessionDispatcher) {
-            input.collect { message -> session.onMidiInput(message).forEach(::report) }
+            input.collect { message ->
+                session.onMidiInput(message).forEach(::report)
+                publishVerdicts()
+            }
         }
         val clockJob = scope.launch(sessionDispatcher) {
             // Like Timer.schedule(task, 0, period): first step immediately, then fixed delay.
@@ -91,6 +96,7 @@ class PracticeRunner(
                         waited += END_POLL_MILLIS
                     }
                     session.end().forEach(::report)
+                    publishVerdicts()
                     _status.update { it.copy(finished = true) }
                     break
                 }
@@ -102,12 +108,13 @@ class PracticeRunner(
                         output.send(MidiMessage.noteOff(note))
                     }
                 }
-                _status.update { it.after(result) }
+                _status.update { it.after(result).with(session.takeVerdicts()) }
                 onStep(result)
                 result.openStep?.let { number ->
                     launch {
                         delay(tolerance)
                         session.expire(number).forEach(::report)
+                        publishVerdicts()
                     }
                 }
                 delay(settings.stepPeriodMillis)
@@ -138,6 +145,17 @@ class PracticeRunner(
                 lastCorrect = evaluation.correct,
             )
         }
+    }
+
+    private fun publishVerdicts() {
+        val verdicts = session.takeVerdicts()
+        if (verdicts.isNotEmpty()) _status.update { it.with(verdicts) }
+    }
+
+    /** A verdict on an older step (e.g. one given up late) does not replace a newer one. */
+    private fun PracticeStatus.with(verdicts: List<StepVerdict>) = verdicts.fold(this) { status, verdict ->
+        val last = status.lastResult
+        if (last == null || verdict.step >= last.step) status.copy(lastResult = verdict) else status
     }
 
     private fun PracticeStatus.after(result: StepResult) = copy(

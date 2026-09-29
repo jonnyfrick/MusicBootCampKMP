@@ -9,7 +9,7 @@ how the port was verified.
 
 | | Java | Kotlin Multiplatform |
 |---|---|---|
-| UI | Swing dialogs (NetBeans form editor) | Compose Multiplatform, one window with tabs |
+| UI | Swing dialogs (NetBeans form editor) | Compose Multiplatform, Material 3, adaptive (phone, tablet, desktop), English and German |
 | Timing | `java.util.Timer` + `TimerTask` | Coroutines (`PracticeRunner`) |
 | MIDI | `javax.sound.midi` | `MidiBackend` interface; desktop implementation with `javax.sound.midi` |
 | Storage | Hand-written XML, one settings + one learned-sequences file per setup | Versioned JSON via kotlinx.serialization; one-way XML import |
@@ -85,8 +85,9 @@ java -Djava.awt.headless=true -cp /tmp/mbc:lib/swing-layout-1.0.3.jar musicbootc
 ```
 
 Further tests: `CoreTest` (common, all platforms), `DesktopPersistenceTest` (imports the real
-files, stores them through the file store and reloads them), `ScreenshotTest` (renders every tab
-off-screen into `app/desktopApp/build/screenshots` and runs an exercise against a fake MIDI system).
+files, stores them through the file store and reloads them), `ScreenshotTest` (renders every screen
+off-screen into `app/desktopApp/build/screenshots` in phone, tablet and desktop sizes and in German,
+finds its way by the texts on screen and runs an exercise against a fake MIDI system).
 
 ```bash
 ./gradlew :core:jvmTest :app:shared:jvmTest :app:desktopApp:test
@@ -134,7 +135,7 @@ off-screen into `app/desktopApp/build/screenshots` and runs an exercise against 
   random walk that could drift far away (reproduced: range 48–72, one voice at 107). It got outside
   through learned sequences recorded with a different range (or a narrowed range). Now
   learned sequences that reach outside the current range are skipped (they stay in memory, the
-  Memory tab shows how many), and random steps from outside the range always move towards it.
+  Memory screen shows how many), and random steps from outside the range always move towards it.
   Within the range the behaviour and the consumed random numbers are unchanged, so the golden master
   tests still pass. Tests: `CoreTest.learnedSequencesOutsideTheRangeDoNotLeadTheExerciseAway`,
   `CoreTest.randomStepsFindBackIntoTheRange`.
@@ -152,17 +153,20 @@ off-screen into `app/desktopApp/build/screenshots` and runs an exercise against 
   a deferred evaluation stores its mistake after the next note was chosen, so it can influence the
   steps after the next one only. MIDI input keeps the Java behaviour (tolerance 0). Tests:
   `LateAnswerTest`.
-- **Octaves count as correct with the microphone** (Preferences → Microphone, on by default): a
+- **Octaves count as correct with the microphone** (Settings → Input, on by default): a
   recognised note or chord with exactly the pitch classes of one of the last given ones counts as
   that one (`matchIgnoringOctaves`). The recognition confuses octaves far more often than the
   player (weak bass fundamentals of real pianos; a unison heard with its octave), so this removes
   many false mistakes; playing in the wrong octave is no longer caught. MIDI input is unchanged.
-- **Given notes hidden by default.** The point is to hear them; "Show notes" on the Practice tab
+- **Given notes hidden by default.** The point is to hear them; "Show notes" on the Practice screen
   reveals them (stored in `preferences.json`).
 - **Settings edited in place** (no OK/Cancel dialogs); they are locked while an exercise runs,
   because Java also only read them when an exercise started.
 - **Live feedback** during practice (correct/wrong counters, optionally the current note). The Java
-  run dialog showed nothing.
+  run dialog showed nothing. Right or wrong shows as soon as the answer is certain
+  (`Corrector.verdict`, `PracticeSession.takeVerdicts`), "nothing heard" instead of "wrong" for a step without any key or recognised note (it still counts as wrong), then "listening" while the next step waits;
+  the evaluation itself still happens when the next step starts, as in Java, so the counters,
+  the memory and the random numbers are unchanged. Tests: `ImmediateFeedbackTest`, `LiveResultTest`.
 - Velocity (was only editable in the XML file) and memory size ("Remember N predecessors" existed
   in the Java dialog but was not connected) are now editable.
 
@@ -177,7 +181,7 @@ off-screen into `app/desktopApp/build/screenshots` and runs an exercise against 
 
 ### Microphone input with pitch detection (acoustic piano, single notes)
 
-Preferences → Input → "Microphone". Detected notes enter the exercise as ordinary note-on
+Settings → Input → "Microphone". Detected notes enter the exercise as ordinary note-on
 messages, so the exercise logic is the same as with a MIDI keyboard.
 
 - `core/pitch/PitchDetector` – McLeod Pitch Method (McLeod & Wyvill 2005), NSDF via FFT, own
@@ -220,11 +224,11 @@ messages, so the exercise logic is the same as with a MIDI keyboard.
   ignored then, which left too little time at fast tempos: at 1 s breathing time and 50 % sustain
   only the last 300 ms of a step.) A correct answer played while the same note still sounds is
   still ignored; subtracting the app's own sound from the microphone signal is planned.
-- Late answers: see "Deliberate changes". The tolerance (Preferences → "Late answers", 0–1000 ms,
+- Late answers: see "Deliberate changes". The tolerance (Settings → Input → "Late answers", 0–1000 ms,
   default 150 ms, `lateAnswerToleranceMillis` in `preferences.json`) counts from the key stroke:
   `NoteTracker.detectionDelay` (about 58 ms) is added, because the note reaches the exercise only
   once it is recognised. Audio buffering (one 11.6 ms block on the desktop) is not added.
-- Recording (Preferences → "Record exercises", off by default): `core/audio/SessionRecorder` writes
+- Recording (Settings → Recognition → "Record exercises", off by default): `core/audio/SessionRecorder` writes
   the audio the detection gets as a WAV file and a JSON log (`RecordingLog`: app note on/off,
   steps, detected and accepted notes, evaluations, each with its sample position) to
   `recordings/session-<date>_<time>.wav/.json` in the data directory; with the app's own sound
@@ -234,11 +238,11 @@ messages, so the exercise logic is the same as with a MIDI keyboard.
 - `preferences.json` stores the detection parameters with `detectionParametersRevision`; values
   from an older revision are reset to the current defaults on loading, so a default changed later
   (e.g. `fallbackMargin` 2 → 0) does not linger.
-- Optimization mode (Preferences → Microphone): every exercise stops by itself after n notes
+- Optimization mode (Settings → Recognition): every exercise stops by itself after n notes
   (`PracticeRunner(maxSteps = …)`; no next note follows the last one, so its answer may come up
   to one step period after the tolerance)
   and is recorded; the detection parameters (`core/pitch/DetectionParameters`, stored in
-  `preferences.json`, defaults = the tuned constants) can be edited, and the Practice tab lists
+  `preferences.json`, defaults = the tuned constants) can be edited, and the Practice screen lists
   the last run step by step (`summarize`), so the player can report where they played something
   else. Recordings store the parameters they were made with. `RecordingReplayTest` analyses
   recordings: a step table with each recognition mistake classified, a CSV of every hop's
@@ -247,7 +251,7 @@ messages, so the exercise logic is the same as with a MIDI keyboard.
 - Desktop capture: `app/shared/src/jvmMain/.../JavaSoundAudio.kt` (javax.sound.sampled, 44.1 kHz
   mono). Other platforms have the `AudioInputBackend` interface but no implementation yet
   (Android `AudioRecord`, iOS `AVAudioEngine`, web `getUserMedia` + AudioWorklet).
-- "Test microphone" in Preferences shows the level and the recognised note with its cents deviation.
+- "Test microphone" in Settings → Input shows the level and the recognised note with its cents deviation.
 - Tests (`PitchDetectionTest`) use synthetic piano tones with inharmonic partials, a weak bass
   fundamental and hammer noise: every note 36–96, legato, sustain pedal, repeated keys, 442 Hz
   tuning, detuning, noise. They still need to be checked against recordings of a real piano.
@@ -276,7 +280,7 @@ several voices).
   combinations (4 voices in 4 octaves: tens of hypotheses instead of 200 000).
 - `core/pitch/PianoTemplates`: a piano model (inharmonic partials, weak bass fundamental,
   partials decaying faster the higher they are) run through the same FFT and log mapping as the
-  measurement, or the player's piano: Preferences → optimization mode → "Calibrate piano" asks
+  measurement, or the player's piano: Settings → Recognition → optimization mode → "Calibrate piano" asks
   for every note of the range once (`PianoCalibration`, measured exactly like a chord; a stroke
   of the asked pitch class counts in any octave — the model heard a real C3 as C4 —, another
   note is asked again) and stores `piano-templates.json` in the data directory; notes without one use the
@@ -317,6 +321,35 @@ several voices).
   wrong chord it was does not matter, and octave ambiguity outside it only added errors.
   `givenBias` > 0 hardly raised the hits and let more wrong answers pass, so it defaults to 0.
 
+### Adaptive user interface (phones, tablets, desktop)
+
+The first UI mirrored the Java dialogs as tabs of one desktop window. It now follows Material 3's
+patterns so that the same `commonMain` code fits every window size:
+
+- **Navigation:** three destinations (Practice, Memory, Settings) in `NavigationSuiteScaffold`, a
+  bottom bar on phones and a rail beside the content from medium width on, chosen by window size
+  class, not by platform.
+- **Practice:** Start / Stop is the floating action button. The exercise's settings (Java: the
+  Random options) open in a bottom sheet on phones and stay open in a side pane on wide windows
+  (`isWideWindow`, from 840 dp). The setup switcher is the app bar's title, its actions are in the
+  overflow menu.
+- **Settings:** list-detail (`ListDetailPaneScaffold`): pages Input, MIDI devices, Tuning and
+  Recognition; one at a time with back navigation on phones, side by side on wide windows.
+- **Building blocks** in `Components.kt` (`SwitchSetting`, `SliderSetting`, `RadioSetting`,
+  `ChoiceSetting`, `NavigationSetting`, `ButtonRow`, `CenteredColumn`): one row per setting with the
+  explanation as supporting text, whole rows as touch targets, semantics for screen readers, no
+  fixed widths. Sliders keep every value in range, so the Java dialogs' corrections of typed
+  values ("You are not a bat!") no longer occur; − / + buttons give exact values on small screens.
+  The range is one slider with two thumbs.
+- **Languages:** all texts, including the controller's messages (`UiText`), are Compose resources
+  in English and German (`composeResources/values*/strings.xml`), following the system language.
+  Error texts from the platform stay as they are.
+- **Theme:** own light and dark colour scheme, Android 12+ uses the wallpaper's colours
+  (`platformColorScheme`); right answers have their own colour next to Material's error colour and
+  are also shown by icon and word.
+- Icons are Material Symbols as path data (`Icons.kt`): the material-icons libraries are no longer
+  published for Compose Multiplatform.
+
 ## Storage
 
 Desktop data directory: `~/Library/Application Support/MusicBootCamp` (macOS),
@@ -337,11 +370,11 @@ The import is one-way: practice done in the new app does not flow back into the 
 ## Open points
 
 - **Manual check at the keyboard** (cannot be automated):
-  1. Import `settings_lin.xml` and `settings_two_voices_mid_range.xml`. Check that the Memory tab shows 25,142 and 2,597 sequences.
-  2. Preferences: choose your keyboard as MIDI In, your synth (or Gervill) as MIDI Out.
-  3. Go! in monophonic mode: the start note sounds, the note length follows the sustain setting, and correct and wrong answers are counted properly.
+  1. Import `settings_lin.xml` and `settings_two_voices_mid_range.xml`. Check that the Memory screen shows 25,142 and 2,597 sequences.
+  2. Settings → MIDI devices: choose your keyboard as MIDI In, your synth (or Gervill) as MIDI Out.
+  3. Start in monophonic mode: the start note sounds, the note length follows the sustain setting, and correct and wrong answers are counted properly.
   4. Two voices: play both notes (any order), and a unison with one key.
-  5. Turn learning on, make mistakes on purpose, press Stop: "Stored" goes up, and the Memory tab count rises.
+  5. Turn learning on, make mistakes on purpose, press Stop: "Stored" goes up, and the Memory screen count rises.
   6. Change Kammerton A while an exercise runs: the pitch shifts immediately.
   7. Close the app while an exercise is running, reopen it: the learned sequences are still there.
 - **MIDI on other platforms:** Android (`android.media.midi`), iOS (CoreMIDI) and web (Web MIDI API,

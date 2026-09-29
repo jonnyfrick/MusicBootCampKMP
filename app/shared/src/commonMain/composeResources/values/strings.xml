@@ -39,6 +39,7 @@
     <string name="practice_listen">Listening …</string>
     <string name="practice_correct">Correct</string>
     <string name="practice_wrong">Wrong</string>
+    <string name="practice_missed">Nothing heard</string>
     <string name="practice_given_notes">Given notes</string>
     <string name="stat_steps">Steps</string>
     <string name="stat_correct">Correct</string>

@@ -26,6 +26,9 @@ sealed interface Corrector {
      */
     fun verdict(): Boolean?
 
+    /** Whether no key was pressed for this step at all. */
+    fun nothingRecorded(): Boolean
+
     /** The remembered steps in the order they are stored as a learned sequence. */
     fun predecessors(): LearnedSequence
 
@@ -79,6 +82,8 @@ class SingleNoteCorrector(private val memorySize: Int) : Corrector {
 
     override fun verdict(): Boolean? = if (recorded >= 0) recorded == given else null
 
+    override fun nothingRecorded(): Boolean = recorded < 0
+
     override fun predecessors(): LearnedSequence = predecessors.map { SequenceElement.Note(it) }
 }
 
@@ -129,6 +134,8 @@ class TwoVoicesCorrector(private val memorySize: Int) : Corrector {
         recorded.clear()
         return true
     }
+
+    override fun nothingRecorded(): Boolean = recorded.isEmpty()
 
     /** Certain after two presses, or after one that is wrong or answers a unison. */
     override fun verdict(): Boolean? = when {

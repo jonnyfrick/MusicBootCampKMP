@@ -164,7 +164,7 @@ finds its way by the texts on screen and runs an exercise against a fake MIDI sy
   because Java also only read them when an exercise started.
 - **Live feedback** during practice (correct/wrong counters, optionally the current note). The Java
   run dialog showed nothing. Right or wrong shows as soon as the answer is certain
-  (`Corrector.verdict`, `PracticeSession.takeVerdicts`), then "listening" while the next step waits;
+  (`Corrector.verdict`, `PracticeSession.takeVerdicts`), "nothing heard" instead of "wrong" for a step without any key or recognised note (it still counts as wrong), then "listening" while the next step waits;
   the evaluation itself still happens when the next step starts, as in Java, so the counters,
   the memory and the random numbers are unchanged. Tests: `ImmediateFeedbackTest`, `LiveResultTest`.
 - Velocity (was only editable in the XML file) and memory size ("Remember N predecessors" existed

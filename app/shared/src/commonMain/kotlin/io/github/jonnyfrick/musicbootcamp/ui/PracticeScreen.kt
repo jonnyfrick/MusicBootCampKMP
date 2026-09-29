@@ -249,7 +249,7 @@ private fun LiveResult(status: PracticeStatus, running: Boolean, breathingTime: 
         targetState = result,
         transitionSpec = { (fadeIn(tween(150)) + scaleIn(tween(150), initialScale = 0.85f)) togetherWith fadeOut(tween(100)) },
         contentAlignment = Alignment.Center,
-    ) { shown -> ResultBadge(shown?.correct, running) }
+    ) { shown -> ResultBadge(shown, running) }
 }
 
 private const val RESULT_HOLD_MILLIS = 700L
@@ -262,17 +262,21 @@ private const val RESULT_HOLD_MILLIS = 700L
 internal fun shownResult(status: PracticeStatus, running: Boolean, holding: Boolean): StepVerdict? =
     status.lastResult?.takeIf { running && (holding || it.step == status.steps - 1) }
 
-/** Right or wrong, as colour, icon and word (not by colour alone), announced to screen readers. */
+/**
+ * Right, wrong or nothing heard, as colour, icon and word (not by colour alone), announced to
+ * screen readers; null: listening, or idle when stopped.
+ */
 @Composable
-private fun ResultBadge(correct: Boolean?, running: Boolean) {
-    val (text, container, content) = when (correct) {
-        true -> Triple(Res.string.practice_correct, MaterialTheme.extendedColors.correctContainer, MaterialTheme.extendedColors.onCorrectContainer)
-        false -> Triple(Res.string.practice_wrong, MaterialTheme.colorScheme.errorContainer, MaterialTheme.colorScheme.onErrorContainer)
-        null -> Triple(
+private fun ResultBadge(result: StepVerdict?, running: Boolean) {
+    val (text, container, content) = when {
+        result == null -> Triple(
             if (running) Res.string.practice_listen else Res.string.practice_idle,
             MaterialTheme.colorScheme.surfaceContainerHigh,
             MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        result.correct -> Triple(Res.string.practice_correct, MaterialTheme.extendedColors.correctContainer, MaterialTheme.extendedColors.onCorrectContainer)
+        result.missed -> Triple(Res.string.practice_missed, MaterialTheme.colorScheme.tertiaryContainer, MaterialTheme.colorScheme.onTertiaryContainer)
+        else -> Triple(Res.string.practice_wrong, MaterialTheme.colorScheme.errorContainer, MaterialTheme.colorScheme.onErrorContainer)
     }
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -281,23 +285,20 @@ private fun ResultBadge(correct: Boolean?, running: Boolean) {
             .padding(horizontal = 16.dp, vertical = 6.dp)
             .semantics { liveRegion = LiveRegionMode.Polite },
     ) {
-        when (correct) {
-            true -> Icon(AppIcons.Check, contentDescription = null, tint = content, modifier = Modifier.size(20.dp).padding(end = 4.dp))
-            false -> Icon(AppIcons.Close, contentDescription = null, tint = content, modifier = Modifier.size(20.dp).padding(end = 4.dp))
-            null -> if (running) {
+        val icon = Modifier.size(20.dp).padding(end = 4.dp)
+        when {
+            result == null -> if (running) {
                 // Listening: a gently pulsing note, so the display is visibly alive.
                 val pulse by rememberInfiniteTransition().animateFloat(
                     initialValue = 0.35f,
                     targetValue = 1f,
                     animationSpec = infiniteRepeatable(tween(600), RepeatMode.Reverse),
                 )
-                Icon(
-                    AppIcons.MusicNote,
-                    contentDescription = null,
-                    tint = content,
-                    modifier = Modifier.size(20.dp).padding(end = 4.dp).alpha(pulse),
-                )
+                Icon(AppIcons.MusicNote, contentDescription = null, tint = content, modifier = icon.alpha(pulse))
             }
+            result.correct -> Icon(AppIcons.Check, contentDescription = null, tint = content, modifier = icon)
+            result.missed -> Icon(AppIcons.Remove, contentDescription = null, tint = content, modifier = icon)
+            else -> Icon(AppIcons.Close, contentDescription = null, tint = content, modifier = icon)
         }
         Text(stringResource(text), style = MaterialTheme.typography.labelLarge, color = content)
     }

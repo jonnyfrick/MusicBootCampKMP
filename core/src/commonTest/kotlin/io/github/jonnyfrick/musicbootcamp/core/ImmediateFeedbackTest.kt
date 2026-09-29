@@ -40,6 +40,21 @@ class ImmediateFeedbackTest {
     }
 
     @Test
+    fun aStepWithoutAnyKeyIsMissedNotJustWrong() {
+        val session = session(mono)
+        session.step()
+        session.step()
+        assertEquals(listOf(StepVerdict(0, correct = false, missed = true)), session.takeVerdicts())
+
+        val late = session(mono)
+        late.step(deferEvaluation = true)
+        val second = late.step(deferEvaluation = true)
+        late.takeVerdicts()
+        late.expire(second.openStep!!)
+        assertEquals(listOf(StepVerdict(0, correct = false, missed = true)), late.takeVerdicts(), "no late answer either")
+    }
+
+    @Test
     fun aLateAnswerIsJudgedWhenItComes() {
         val session = session(mono)
         val first = session.step(deferEvaluation = true)

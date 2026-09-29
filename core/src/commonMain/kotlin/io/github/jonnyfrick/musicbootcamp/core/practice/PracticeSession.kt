@@ -38,9 +38,10 @@ data class Evaluation(
 
 /**
  * Whether step [step] (0-based, in the order given) was played right: known as soon as its answer
- * is, for feedback, before the step is evaluated (which may wait for the next step).
+ * is, for feedback, before the step is evaluated (which may wait for the next step). [missed]: it
+ * counts as wrong because nothing was played (or heard) at all.
  */
-data class StepVerdict(val step: Int, val correct: Boolean)
+data class StepVerdict(val step: Int, val correct: Boolean, val missed: Boolean = false)
 
 /**
  * One exercise run without any timing: [step] is what the Java `TimerTask`s did
@@ -225,8 +226,9 @@ class PracticeSession(
 
     /** Evaluates step [number] (-1: before the first step, nothing to evaluate yet). */
     private fun evaluate(number: Int): Evaluation {
+        val missed = corrector.nothingRecorded()
         val correct = corrector.correct()
-        if (number >= 0) verdicts += StepVerdict(number, correct)
+        if (number >= 0) verdicts += StepVerdict(number, correct, missed = missed && !correct)
         var stored = false
         if (!correct && settings.learnNewSequences) {
             val predecessors = corrector.predecessors()

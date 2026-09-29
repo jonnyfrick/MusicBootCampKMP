@@ -172,6 +172,7 @@ private fun InputSettings(controller: AppController) {
             selected = preferences.audioInputDevice?.takeIf { it in controller.audioInputDevices },
             label = { it ?: systemDefault },
             onSelect = controller::selectAudioInputDevice,
+            onOpen = controller::refreshDevices,
             enabled = !running,
             icon = AppIcons.Mic,
         )
@@ -180,7 +181,11 @@ private fun InputSettings(controller: AppController) {
             checked = preferences.usesHeadphones,
             onCheckedChange = controller::setUsesHeadphones,
             enabled = !running,
-            supporting = stringResource(if (preferences.usesHeadphones) Res.string.headphones_on_hint else Res.string.headphones_off_hint),
+            supporting = when {
+                preferences.usesHeadphones -> stringResource(Res.string.headphones_on_hint)
+                controller.ownSynthName != null -> stringResource(Res.string.headphones_off_hint, controller.ownSynthName!!)
+                else -> stringResource(Res.string.headphones_off_hint_plain)
+            },
         )
         SwitchSetting(
             title = stringResource(Res.string.octaves),
@@ -245,6 +250,7 @@ private fun MidiSettings(controller: AppController) {
             selected = selectedInput(controller),
             label = { it ?: noDevice },
             onSelect = { it?.let(controller::selectInputDevice) },
+            onOpen = controller::refreshDevices,
             enabled = !running,
             icon = AppIcons.MusicNote,
         )
@@ -254,13 +260,12 @@ private fun MidiSettings(controller: AppController) {
             selected = selectedOutput(controller),
             label = { it ?: noDevice },
             onSelect = { it?.let(controller::selectOutputDevice) },
+            onOpen = controller::refreshDevices,
             enabled = !running,
             icon = AppIcons.Speaker,
         )
-        ButtonRow {
-            TextButton(onClick = controller::refreshDevices, enabled = !running) { Text(stringResource(Res.string.refresh_devices)) }
-        }
         SettingHint(stringResource(Res.string.devices_hint))
+        controller.ownSynthName?.let { SettingHint(stringResource(Res.string.own_synth_hint, it)) }
     }
     SettingsSection(stringResource(Res.string.test_midi)) {
         ButtonRow {

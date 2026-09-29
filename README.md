@@ -75,7 +75,12 @@ number of notes, always recorded, detection parameters editable, and a step-by-s
 
 ### Other targets
 
-`./gradlew :app:androidApp:assembleDebug`, `./gradlew :app:webApp:wasmJsBrowserDevelopmentRun`,
+Android (MIDI over USB, microphone, the app's own piano as sound): `./gradlew :app:androidApp:installDebug`
+with a phone connected (USB debugging on), or `assembleDebug` for the APK in
+`app/androidApp/build/outputs/apk/debug`. Recordings land in
+`Android/data/io.github.jonnyfrick.musicbootcamp/files/recordings` on the phone.
+
+Web: `./gradlew :app:webApp:wasmJsBrowserDevelopmentRun`;
 iOS via Xcode in [`app/iosApp`](app/iosApp).
 
 ## Tests

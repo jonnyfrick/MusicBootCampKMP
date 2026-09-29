@@ -68,6 +68,12 @@ interface AudioInputBackend {
 
     fun devices(): List<String>
 
+    /** Whether the app may record now (on Android the user grants it at runtime). */
+    val hasAccess: Boolean get() = true
+
+    /** Asks the user for access to the microphone; true if granted. */
+    suspend fun requestAccess(): Boolean = true
+
     /** Opens the named input, or the system default for null. */
     fun open(name: String?): AudioInputPort
 }

@@ -11,9 +11,9 @@ how the port was verified.
 |---|---|---|
 | UI | Swing dialogs (NetBeans form editor) | Compose Multiplatform, Material 3, adaptive (phone, tablet, desktop), English and German |
 | Timing | `java.util.Timer` + `TimerTask` | Coroutines (`PracticeRunner`) |
-| MIDI | `javax.sound.midi` | `MidiBackend` interface; desktop implementation with `javax.sound.midi` |
+| MIDI | `javax.sound.midi` | `MidiBackend` interface; desktop with `javax.sound.midi`, Android with `android.media.midi` |
 | Storage | Hand-written XML, one settings + one learned-sequences file per setup | Versioned JSON via kotlinx.serialization; one-way XML import |
-| Platforms | Desktop (JVM) | Desktop fully working; Android, iOS, web compile and show the UI but have no MIDI yet |
+| Platforms | Desktop (JVM) | Desktop and Android fully working (MIDI, microphone, storage); iOS and web compile and show the UI but have no MIDI or audio yet |
 | Tests | none | Golden master tests against recorded Java output + unit tests |
 
 ## Project layout
@@ -249,8 +249,8 @@ messages, so the exercise logic is the same as with a MIDI keyboard.
   decisions (`NoteTracker.trace`) and a spectrogram PNG (microphone, reference, predicted own
   sound, levels), optionally a parameter sweep (see README).
 - Desktop capture: `app/shared/src/jvmMain/.../JavaSoundAudio.kt` (javax.sound.sampled, 44.1 kHz
-  mono). Other platforms have the `AudioInputBackend` interface but no implementation yet
-  (Android `AudioRecord`, iOS `AVAudioEngine`, web `getUserMedia` + AudioWorklet).
+  mono); Android: see below. iOS (`AVAudioEngine`) and web (`getUserMedia` + AudioWorklet) have the
+  `AudioInputBackend` interface but no implementation yet.
 - "Test microphone" in Settings → Input shows the level and the recognised note with its cents deviation.
 - Tests (`PitchDetectionTest`) use synthetic piano tones with inharmonic partials, a weak bass
   fundamental and hammer noise: every note 36–96, legato, sustain pedal, repeated keys, 442 Hz
@@ -321,6 +321,34 @@ several voices).
   wrong chord it was does not matter, and octave ambiguity outside it only added errors.
   `givenBias` > 0 hardly raised the hits and let more wrong answers pass, so it defaults to 0.
 
+### Android: microphone, MIDI and the app's own piano
+
+`app/shared/src/androidMain/.../android/` (created by `androidServices` in `MainActivity`):
+
+- **Sound:** Android has no real-time synthesizer to send MIDI to, so the app plays its own
+  `core/audio/PianoSynth` (decaying, slightly stretched partials, sustain pedal, pitch bend with the
+  range set by RPN 0 as `Tuning` sends it) through an `AudioTrack`: `AndroidPianoSynth`, the MIDI
+  output "MusicBootCamp Piano". Being rendered by the app, it is a `RenderedSynth` like Gervill, so
+  its sound is removed from the microphone signal the same way; both keep what they played in
+  `PlayedAudioBuffer`.
+- **Microphone:** `AndroidAudioInput` with `AudioRecord`, 44.1 kHz mono float, from the
+  "unprocessed" source where the device has one, else the speech-recognition source (neither has
+  the gain control and noise suppression of calls). The permission is asked for when the
+  microphone is first needed (`AudioInputBackend.hasAccess` / `requestAccess`, used by
+  `AppController.withMicrophoneAccess`).
+- **MIDI:** `AndroidMidiBackend` with `android.media.midi` (USB keyboards, other apps' MIDI
+  services); bytes are parsed by `core/midi/MidiParser` (running status, split chunks, system
+  messages skipped). Devices open on a MIDI thread of their own.
+- **Storage:** setups in the app's private files; recordings in
+  `Android/data/io.github.jonnyfrick.musicbootcamp/files/recordings`, reachable over USB.
+- **Lifecycle:** rotating or resizing keeps the activity (`configChanges`), so an exercise keeps
+  running; leaving the app stops it (Android silences background microphones anyway); the screen
+  stays on while an exercise or a calibration runs.
+- **Devices:** the device lists refresh whenever a choice opens (no refresh button any more), and a
+  keyboard plugged in while the app runs becomes the MIDI input at once, on every platform (the
+  output stays, so the app's own synthesizer keeps removing its sound). Test: `DeviceHotplugTest`.
+- Tests: `PianoSynthTest` (pitch as our recognition hears it, tuning, pedal, full scale, parser).
+
 ### Adaptive user interface (phones, tablets, desktop)
 
 The first UI mirrored the Java dialogs as tabs of one desktop window. It now follows Material 3's
@@ -377,8 +405,9 @@ The import is one-way: practice done in the new app does not flow back into the 
   5. Turn learning on, make mistakes on purpose, press Stop: "Stored" goes up, and the Memory screen count rises.
   6. Change Kammerton A while an exercise runs: the pitch shifts immediately.
   7. Close the app while an exercise is running, reopen it: the learned sequences are still there.
-- **MIDI on other platforms:** Android (`android.media.midi`), iOS (CoreMIDI) and web (Web MIDI API,
-  Chromium only) each need a `MidiBackend` and a persistent `DocumentStore`. The UI already runs there.
+- **MIDI and audio on iOS and web:** iOS (CoreMIDI, `AVAudioEngine`) and web (Web MIDI API, Chromium
+  only; `getUserMedia`) each need a `MidiBackend`, an `AudioInputBackend` and a persistent
+  `DocumentStore`, like Android. The UI already runs there.
 - **Two-voice sequence order** (see above): decide whether to reverse it. If you do, convert existing memories
   at the same time.
 - The Mac here is Intel (`macos_x64`), a Kotlin/Native host that Kotlin marks as deprecated; iOS builds will need an Apple Silicon Mac in future.

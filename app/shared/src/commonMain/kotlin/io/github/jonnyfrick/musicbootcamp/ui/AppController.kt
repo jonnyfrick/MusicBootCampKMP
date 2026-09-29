@@ -176,19 +176,27 @@ class AppController(
         launchSafely { services.midi.devicesChanged.collect { onMidiDevicesChanged() } }
     }
 
-    /** A MIDI device was plugged in or removed: update the lists and say what changed. */
+    /**
+     * A MIDI device was plugged in or removed: update the lists and say what changed. A keyboard
+     * plugged in is meant to be played on, so it becomes the MIDI input at once (the output stays:
+     * the app's own synthesizer can remove its sound from the microphone, a keyboard's cannot).
+     */
     private fun onMidiDevicesChanged() {
+        val inputsBefore = inputDevices.toSet()
         val before = (inputDevices + outputDevices).toSet()
         refreshDevices()
         val after = (inputDevices + outputDevices).toSet()
         val added = after - before
         val removed = before - after
         if (added.isEmpty() && removed.isEmpty()) return
+        val newInput = inputDevices.firstOrNull { it !in inputsBefore && it != JAVA_SEQUENCER }
+        if (newInput != null && !running) selectInputDevice(newInput)
         message = UiText.Joined(
             buildList {
                 if (added.isNotEmpty()) add(text(Res.string.msg_midi_connected, added.joinToString()))
+                if (newInput != null && !running) add(text(Res.string.msg_midi_chosen, newInput))
                 if (removed.isNotEmpty()) add(text(Res.string.msg_midi_disconnected, removed.joinToString()))
-                if (running) add(text(Res.string.msg_restart_to_use))
+                if (running && added.isNotEmpty()) add(text(Res.string.msg_restart_to_use))
             },
         )
     }
@@ -290,6 +298,7 @@ class AppController(
     fun startPractice() {
         if (running) return
         val microphone = preferences.inputSource == InputSource.MICROPHONE
+        if (microphone && !withMicrophoneAccess(::startPractice)) return
         val problem = when {
             services.midi.unavailableReason != null -> services.midi.unavailableReason?.let(UiText::Raw)
             microphone && services.audio.unavailableReason != null -> services.audio.unavailableReason?.let(UiText::Raw)
@@ -500,8 +509,21 @@ class AppController(
     // ------------------------------------------------------------ microphone test
 
     /** Opens the microphone and shows level and recognised notes in Preferences. */
+    /**
+     * True if the microphone may be used now. Otherwise asks the user (Android) and, if they
+     * allow it, runs [retry] afterwards; false meanwhile.
+     */
+    private fun withMicrophoneAccess(retry: () -> Unit): Boolean {
+        if (services.audio.hasAccess) return true
+        launchSafely {
+            if (services.audio.requestAccess()) retry() else message = text(Res.string.msg_microphone_denied)
+        }
+        return false
+    }
+
     fun startMicTest() {
         if (running || micTesting) return
+        if (!withMicrophoneAccess(::startMicTest)) return
         val audio = runCatching { services.audio.open(preferences.audioInputDevice) }.getOrElse {
             message = text(Res.string.msg_open_microphone_failed, it.toUiText())
             return
@@ -544,6 +566,7 @@ class AppController(
      */
     fun startCalibration() {
         if (running || calibrating) return
+        if (!withMicrophoneAccess(::startCalibration)) return
         stopMicTest()
         val audio = runCatching { services.audio.open(preferences.audioInputDevice) }.getOrElse {
             message = text(Res.string.msg_open_microphone_failed, it.toUiText())
@@ -682,6 +705,9 @@ class AppController(
         outputDevices = runCatching { services.midi.outputDevices() }.getOrDefault(emptyList())
         audioInputDevices = runCatching { services.audio.devices() }.getOrDefault(emptyList())
     }
+
+    /** The synthesizer the app renders itself, whose sound it can remove from the microphone. */
+    val ownSynthName: String? get() = services.renderedSynth?.deviceName
 
     fun setShowGivenNotes(show: Boolean) = updatePreferences { it.copy(showGivenNotes = show) }
 

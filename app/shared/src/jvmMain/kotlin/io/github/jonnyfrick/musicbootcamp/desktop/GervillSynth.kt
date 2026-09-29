@@ -1,6 +1,7 @@
 package io.github.jonnyfrick.musicbootcamp.desktop
 
 import io.github.jonnyfrick.musicbootcamp.core.midi.MidiMessage
+import io.github.jonnyfrick.musicbootcamp.platform.PlayedAudioBuffer
 import io.github.jonnyfrick.musicbootcamp.platform.RenderedOutputPort
 import io.github.jonnyfrick.musicbootcamp.platform.RenderedSynth
 import javax.sound.midi.Receiver
@@ -11,7 +12,6 @@ import javax.sound.sampled.AudioInputStream
 import javax.sound.sampled.AudioSystem
 import javax.sound.sampled.SourceDataLine
 import kotlin.concurrent.thread
-import kotlin.math.abs
 
 /**
  * Java's software synthesizer Gervill, rendered by the app instead of playing on its own, so
@@ -40,10 +40,9 @@ private class GervillPort(sampleRate: Int) : RenderedOutputPort {
         start()
     }
 
-    // What was rendered, by frame number; guarded by `this`.
-    private val ring = FloatArray(RING_FRAMES)
-    private var rendered = 0L
-    private var readPosition = -1L
+    // What was rendered; guarded by `this`.
+    private val played = PlayedAudioBuffer()
+    private val block = FloatArray(BLOCK_FRAMES)
 
     @Volatile private var running = true
     private val renderer = thread(name = "Gervill renderer", isDaemon = true) { render() }
@@ -53,17 +52,7 @@ private class GervillPort(sampleRate: Int) : RenderedOutputPort {
     }
 
     override fun playedAudio(frames: Int): FloatArray = synchronized(this) {
-        // The loudspeaker plays line.longFramePosition now; take a little more than that so the
-        // microphone, which hears it later, always lags behind the reference (never leads).
-        val target = line.longFramePosition + LEAD_FRAMES - frames
-        if (readPosition < 0 || abs(readPosition - target) > RESYNC_FRAMES) readPosition = target
-        val result = FloatArray(frames) { i ->
-            val position = readPosition + i
-            if (position < 0 || position >= rendered || position < rendered - RING_FRAMES) 0f
-            else ring[(position % RING_FRAMES).toInt()]
-        }
-        readPosition += frames
-        result
+        played.read(frames, line.longFramePosition, LEAD_FRAMES, RESYNC_FRAMES)
     }
 
     private fun render() {
@@ -79,9 +68,9 @@ private class GervillPort(sampleRate: Int) : RenderedOutputPort {
                 synchronized(this) {
                     for (i in 0 until BLOCK_FRAMES) {
                         val value = (bytes[2 * i].toInt() and 0xFF) or (bytes[2 * i + 1].toInt() shl 8)
-                        ring[((rendered + i) % RING_FRAMES).toInt()] = value / 32768f
+                        block[i] = value / 32768f
                     }
-                    rendered += BLOCK_FRAMES
+                    played.append(block)
                 }
                 line.write(bytes, 0, bytes.size) // blocks while the line's buffer is full: paces the rendering
             }
@@ -107,6 +96,5 @@ private class GervillPort(sampleRate: Int) : RenderedOutputPort {
         const val LINE_BUFFER_FRAMES = 4096
         const val LEAD_FRAMES = 1024
         const val RESYNC_FRAMES = 4096
-        const val RING_FRAMES = 1 shl 16
     }
 }

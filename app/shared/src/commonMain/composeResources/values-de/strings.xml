@@ -113,7 +113,8 @@
     <string name="system_default">Systemstandard</string>
     <string name="headphones">Ich verwende Kopfhörer</string>
     <string name="headphones_on_hint">Gespielte Töne werden jederzeit erkannt.</string>
-    <string name="headphones_off_hint">Ohne Kopfhörer hört das Mikrofon die App mit. Mit „Gervill“ als MIDI-Ausgang zieht die App ihren eigenen Klang ab, sodass jeder Ton zählt (sie braucht zu Beginn einer Übung ein paar Töne, um deinen Raum zu lernen; bis dahin werden der Ton der App und seine Oktaven ignoriert, solange er klingt).</string>
+    <string name="headphones_off_hint_plain">Ohne Kopfhörer hört das Mikrofon die App mit: Während die App einen Ton spielt, werden dieser Ton und seine Oktaven ignoriert.</string>
+    <string name="headphones_off_hint">Ohne Kopfhörer hört das Mikrofon die App mit. Mit „%1$s“ als MIDI-Ausgang zieht die App ihren eigenen Klang ab, sodass jeder Ton zählt (sie braucht zu Beginn einer Übung ein paar Töne, um deinen Raum zu lernen; bis dahin werden der Ton der App und seine Oktaven ignoriert, solange er klingt).</string>
     <string name="octaves">Richtige Töne in anderer Oktave zählen</string>
     <string name="octaves_hint">Die Erkennung verwechselt Oktaven viel öfter als du (tiefe Klaviertöne haben schwache Grundtöne).</string>
     <string name="late_answers">Späte Antworten</string>
@@ -123,8 +124,8 @@
     <string name="microphone_level">Mikrofonpegel</string>
     <string name="midi_in">MIDI-Eingang (dein Keyboard)</string>
     <string name="midi_out">MIDI-Ausgang (Klang)</string>
-    <string name="refresh_devices">Geräteliste aktualisieren</string>
-    <string name="devices_hint">Die Geräte werden beim Drücken von Start geöffnet. „Gervill“ ist der eingebaute Software-Synthesizer von Java.</string>
+    <string name="devices_hint">Ein angestecktes Keyboard wird sofort als MIDI-Eingang gewählt. Die Geräte werden beim Drücken von Start geöffnet.</string>
+    <string name="own_synth_hint">„%1$s“ spielt die App selbst, daher kann sie ihren Klang aus dem Mikrofonsignal entfernen.</string>
     <string name="test_midi">MIDI testen</string>
     <string name="play_test_note">Testton spielen</string>
     <string name="midi_test_hint">„MIDI testen“ zeigt die Tasten, die vom MIDI-Eingang kommen; „Testton spielen“ spielt a′ auf dem MIDI-Ausgang, gestimmt auf den Kammerton A.</string>
@@ -213,6 +214,7 @@
 
     <!-- Messages -->
     <string name="msg_midi_connected">MIDI verbunden: %1$s</string>
+    <string name="msg_midi_chosen">Du spielst jetzt auf %1$s.</string>
     <string name="msg_midi_disconnected">MIDI getrennt: %1$s</string>
     <string name="msg_restart_to_use">Stoppe die Übung und starte sie neu, um es zu verwenden.</string>
     <string name="msg_open_setup_failed">Setup „%1$s“ konnte nicht geöffnet werden: %2$s</string>
@@ -226,6 +228,7 @@
     <string name="msg_recording_saved">Aufnahme gespeichert: %1$s</string>
     <string name="msg_recording_failed">Die Aufnahme konnte nicht gespeichert werden: %1$s</string>
     <string name="msg_own_sound_failed">Der eigene Klang der App kann nicht abgezogen werden (%1$s); passende Eingaben werden ignoriert, solange sie spielt.</string>
+    <string name="msg_microphone_denied">Ohne Zugriff auf das Mikrofon kann die App dein Klavier nicht hören. Du kannst ihn in den Systemeinstellungen erlauben.</string>
     <string name="msg_open_microphone_failed">Das Mikrofon konnte nicht geöffnet werden: %1$s</string>
     <string name="msg_calibrated">Klavier kalibriert: %1$s Töne.</string>
     <string name="msg_open_midi_input_failed">Der MIDI-Eingang konnte nicht geöffnet werden: %1$s</string>

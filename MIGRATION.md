@@ -407,6 +407,10 @@ The import is one-way: practice done in the new app does not flow back into the 
   5. Turn learning on, make mistakes on purpose, press Stop: "Stored" goes up, and the Memory screen count rises.
   6. Change Kammerton A while an exercise runs: the pitch shifts immediately.
   7. Close the app while an exercise is running, reopen it: the learned sequences are still there.
+- **Debug-only tools (decided, not done yet):** the import of Java XML setups and everything for
+  tuning the pitch detection (Settings → Recognition: recording, optimization mode, detection
+  parameters, calibration) are developer tools and shall only be available in debug builds, not to
+  users of a release.
 - **MIDI and audio on iOS and web:** iOS (CoreMIDI, `AVAudioEngine`) and web (Web MIDI API, Chromium
   only; `getUserMedia`) each need a `MidiBackend`, an `AudioInputBackend` and a persistent
   `DocumentStore`, like Android. The UI already runs there.

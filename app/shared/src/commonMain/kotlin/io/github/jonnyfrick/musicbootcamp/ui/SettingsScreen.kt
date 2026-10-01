@@ -61,6 +61,8 @@ internal fun SettingsScreen(controller: AppController, snackbar: SnackbarHostSta
     val scope = rememberCoroutineScope()
     val twoPanes = navigator.scaffoldValue[ListDetailPaneScaffoldRole.List] != PaneAdaptedValue.Hidden &&
         navigator.scaffoldValue[ListDetailPaneScaffoldRole.Detail] != PaneAdaptedValue.Hidden
+    // The recognition's tuning tools are for debug builds only.
+    val pages = SettingsPage.entries.filter { it != SettingsPage.RECOGNITION || controller.debugTools }
     // Side by side, a page is always shown: the first one until another is chosen.
     val page = navigator.currentDestination?.contentKey ?: SettingsPage.INPUT
 
@@ -77,7 +79,7 @@ internal fun SettingsScreen(controller: AppController, snackbar: SnackbarHostSta
                     snackbarHost = { if (!twoPanes) SnackbarHost(snackbar) },
                 ) { padding ->
                     CenteredColumn(Modifier.padding(padding)) {
-                        SettingsPage.entries.forEach { entry ->
+                        pages.forEach { entry ->
                             NavigationSetting(
                                 title = stringResource(entry.title),
                                 summary = summary(controller, entry),

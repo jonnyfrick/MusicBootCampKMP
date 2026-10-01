@@ -1,6 +1,7 @@
 package io.github.jonnyfrick.musicbootcamp.android
 
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import android.net.Uri
 import io.github.jonnyfrick.musicbootcamp.core.audio.RecordingFile
 import io.github.jonnyfrick.musicbootcamp.core.audio.Wav
@@ -41,6 +42,8 @@ fun androidServices(
         audio = AndroidAudioInput(app, requestMicrophone),
         recordings = FileRecordingStore(File(app.getExternalFilesDir(null) ?: app.filesDir, "recordings")),
         renderedSynth = synth,
+        // Debug builds (installDebug, Android Studio) are debuggable, release builds are not.
+        debugTools = app.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0,
     )
 }
 

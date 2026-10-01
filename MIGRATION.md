@@ -351,6 +351,17 @@ several voices).
   output stays, so the app's own synthesizer keeps removing its sound). Test: `DeviceHotplugTest`.
 - Tests: `PianoSynthTest` (pitch as our recognition hears it, tuning, pedal, full scale, parser).
 
+### Developer tools only in debug builds
+
+The import of Java XML setups and everything for tuning the recognition (Settings → Recognition:
+recording, optimization mode, detection parameters, calibration) are developer tools
+(`PlatformServices.debugTools`). On: desktop runs from Gradle (`run` sets `musicbootcamp.debug`;
+`-Pmusicbootcamp.debug=false` shows the app as users get it) and debuggable Android builds
+(`installDebug`). Off: the packaged desktop app and Android release builds. Without them the menu
+item and the settings page are gone, and the recognition always uses its default parameters,
+never records and ignores a calibration, whatever a debug build stored on the device
+(`AppController.tuning`). Test: `ScreenshotTest.aReleaseBuildHasNoDeveloperTools`.
+
 ### Adaptive user interface (phones, tablets, desktop)
 
 The first UI mirrored the Java dialogs as tabs of one desktop window. It now follows Material 3's
@@ -407,10 +418,6 @@ The import is one-way: practice done in the new app does not flow back into the 
   5. Turn learning on, make mistakes on purpose, press Stop: "Stored" goes up, and the Memory screen count rises.
   6. Change Kammerton A while an exercise runs: the pitch shifts immediately.
   7. Close the app while an exercise is running, reopen it: the learned sequences are still there.
-- **Debug-only tools (decided, not done yet):** the import of Java XML setups and everything for
-  tuning the pitch detection (Settings → Recognition: recording, optimization mode, detection
-  parameters, calibration) are developer tools and shall only be available in debug builds, not to
-  users of a release.
 - **MIDI and audio on iOS and web:** iOS (CoreMIDI, `AVAudioEngine`) and web (Web MIDI API, Chromium
   only; `getUserMedia`) each need a `MidiBackend`, an `AudioInputBackend` and a persistent
   `DocumentStore`, like Android. The UI already runs there.

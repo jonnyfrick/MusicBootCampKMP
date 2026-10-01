@@ -228,6 +228,8 @@ internal fun <T> ChoiceSetting(
     onSelect: (T) -> Unit,
     enabled: Boolean = true,
     icon: ImageVector? = null,
+    /** Called when the choice opens, e.g. to look for devices plugged in meanwhile. */
+    onOpen: () -> Unit = {},
 ) {
     var open by remember { mutableStateOf(false) }
     val active = enabled && options.isNotEmpty()
@@ -241,7 +243,10 @@ internal fun <T> ChoiceSetting(
             headlineColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
             supportingColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
         ),
-        modifier = Modifier.selectable(selected = false, enabled = active, role = Role.DropdownList) { open = true },
+        modifier = Modifier.selectable(selected = false, enabled = active, role = Role.DropdownList) {
+            onOpen()
+            open = true
+        },
     )
     if (open) {
         AlertDialog(

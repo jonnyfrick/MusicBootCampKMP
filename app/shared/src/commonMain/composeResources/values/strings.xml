@@ -113,7 +113,8 @@
     <string name="system_default">System default</string>
     <string name="headphones">I use headphones</string>
     <string name="headphones_on_hint">Notes you play are recognised at any time.</string>
-    <string name="headphones_off_hint">Without headphones the microphone hears the app too. With “Gervill” as MIDI Out the app removes its own sound, so every note counts (it needs a few notes at the start of an exercise to learn your room; until then the note the app is playing and its octaves are ignored while it sounds).</string>
+    <string name="headphones_off_hint_plain">Without headphones the microphone hears the app too: while the app plays a note, that note and its octaves are ignored.</string>
+    <string name="headphones_off_hint">Without headphones the microphone hears the app too. With “%1$s” as MIDI Out the app removes its own sound, so every note counts (it needs a few notes at the start of an exercise to learn your room; until then the note the app is playing and its octaves are ignored while it sounds).</string>
     <string name="octaves">Right notes in another octave count</string>
     <string name="octaves_hint">The recognition mistakes octaves far more often than you do (a piano’s low notes have weak fundamentals).</string>
     <string name="late_answers">Late answers</string>
@@ -123,8 +124,8 @@
     <string name="microphone_level">Microphone level</string>
     <string name="midi_in">MIDI In (your keyboard)</string>
     <string name="midi_out">MIDI Out (sound)</string>
-    <string name="refresh_devices">Refresh device list</string>
-    <string name="devices_hint">Devices are opened when you press Start. “Gervill” is Java’s built-in software synthesizer.</string>
+    <string name="devices_hint">A keyboard you plug in is chosen as MIDI In right away. Devices are opened when you press Start.</string>
+    <string name="own_synth_hint">“%1$s” is played by the app itself, so it can remove its sound from the microphone signal.</string>
     <string name="test_midi">Test MIDI</string>
     <string name="play_test_note">Play test note</string>
     <string name="midi_test_hint">“Test MIDI” shows the keys arriving from MIDI In; “Play test note” plays A′ on MIDI Out, tuned to the reference A.</string>
@@ -213,6 +214,7 @@
 
     <!-- Messages -->
     <string name="msg_midi_connected">MIDI connected: %1$s</string>
+    <string name="msg_midi_chosen">Now playing on %1$s.</string>
     <string name="msg_midi_disconnected">MIDI disconnected: %1$s</string>
     <string name="msg_restart_to_use">Stop and restart the exercise to use it.</string>
     <string name="msg_open_setup_failed">Could not open setup “%1$s”: %2$s</string>
@@ -226,6 +228,7 @@
     <string name="msg_recording_saved">Recording saved: %1$s</string>
     <string name="msg_recording_failed">Could not save the recording: %1$s</string>
     <string name="msg_own_sound_failed">The app’s own sound cannot be removed (%1$s); input matching it is ignored while it plays.</string>
+    <string name="msg_microphone_denied">Without access to the microphone the app cannot hear your piano. You can allow it in the system settings.</string>
     <string name="msg_open_microphone_failed">Could not open the microphone: %1$s</string>
     <string name="msg_calibrated">Piano calibrated: %1$s notes.</string>
     <string name="msg_open_midi_input_failed">Could not open the MIDI input: %1$s</string>

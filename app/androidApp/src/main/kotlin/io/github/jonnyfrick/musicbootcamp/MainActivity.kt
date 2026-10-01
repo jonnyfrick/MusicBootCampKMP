@@ -1,12 +1,15 @@
 package io.github.jonnyfrick.musicbootcamp
 
-import android.Manifest
+import android.content.Intent
+import android.content.IntentSender
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.snapshotFlow
 import io.github.jonnyfrick.musicbootcamp.android.androidServices
@@ -31,15 +34,29 @@ class MainActivity : ComponentActivity() {
     private lateinit var controller: AppController
 
     private var permissionAnswer: CompletableDeferred<Boolean>? = null
-    private val microphonePermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+    private val permissionRequest = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         permissionAnswer?.complete(granted)
         permissionAnswer = null
     }
 
-    /** Asks for the microphone; the answer comes back through [microphonePermission]. */
-    private suspend fun requestMicrophone(): Boolean {
+    /** Asks the user for [permission] unless the app has it; the answer comes back through [permissionRequest]. */
+    private suspend fun requestPermission(permission: String): Boolean {
+        if (checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED) return true
         val answer = CompletableDeferred<Boolean>().also { permissionAnswer = it }
-        microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
+        permissionRequest.launch(permission)
+        return answer.await()
+    }
+
+    private var chooserResult: CompletableDeferred<Intent?>? = null
+    private val chooser = registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+        chooserResult?.complete(result.data.takeIf { result.resultCode == RESULT_OK })
+        chooserResult = null
+    }
+
+    /** Shows a system dialog (e.g. to choose a Bluetooth device); null if the user cancelled. */
+    private suspend fun launchChooser(sender: IntentSender): Intent? {
+        val answer = CompletableDeferred<Intent?>().also { chooserResult = it }
+        chooser.launch(IntentSenderRequest.Builder(sender).build())
         return answer.await()
     }
 
@@ -59,7 +76,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        controller = AppController(androidServices(this, ::requestMicrophone, ::pickFiles), scope)
+        controller = AppController(androidServices(this, ::requestPermission, ::pickFiles, ::launchChooser), scope)
 
         // The screen stays on while an exercise runs: the player has their hands on the piano.
         scope.launch {

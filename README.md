@@ -81,8 +81,13 @@ with a phone connected (USB debugging on), or `assembleDebug` for the APK in
 `app/androidApp/build/outputs/apk/debug`. Recordings land in
 `Android/data/io.github.jonnyfrick.musicbootcamp/files/recordings` on the phone.
 
-Web: `./gradlew :app:webApp:wasmJsBrowserDevelopmentRun`;
-iOS via Xcode in [`app/iosApp`](app/iosApp).
+Web (Web MIDI in Chromium browsers and Firefox, microphone, the app's own piano; setups in the browser's local
+storage): `./gradlew :app:webApp:wasmJsBrowserDevelopmentRun`, then http://localhost:8080.
+
+iOS (CoreMIDI, microphone, the app's own piano) via Xcode in [`app/iosApp`](app/iosApp), on an Apple Silicon Mac.
+
+Bluetooth MIDI: on Android and iOS under Settings → MIDI devices → "Connect Bluetooth MIDI…"; on macOS connect the
+device in Audio MIDI Setup → Bluetooth, then it is listed like any MIDI device.
 
 ## Tests
 

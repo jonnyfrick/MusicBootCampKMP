@@ -266,6 +266,13 @@ private fun MidiSettings(controller: AppController) {
             enabled = !running,
             icon = AppIcons.Speaker,
         )
+        if (controller.canConnectBluetoothMidi) {
+            ButtonRow {
+                OutlinedButton(onClick = controller::connectBluetoothMidi, enabled = !running) {
+                    Text(stringResource(Res.string.bluetooth_midi))
+                }
+            }
+        }
         SettingHint(stringResource(Res.string.devices_hint))
         controller.ownSynthName?.let { SettingHint(stringResource(Res.string.own_synth_hint, it)) }
     }

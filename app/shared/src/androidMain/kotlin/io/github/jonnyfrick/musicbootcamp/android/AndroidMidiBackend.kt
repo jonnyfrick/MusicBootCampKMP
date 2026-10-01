@@ -1,5 +1,6 @@
 package io.github.jonnyfrick.musicbootcamp.android
 
+import android.bluetooth.BluetoothDevice
 import android.content.Context
 import android.content.pm.PackageManager
 import android.media.midi.MidiDevice
@@ -18,7 +19,9 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.merge
 import java.io.IOException
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
@@ -44,7 +47,28 @@ class AndroidMidiBackend(context: Context, private val piano: AndroidPianoSynth)
     override fun outputDevices(): List<String> =
         listOf(piano.deviceName) + named(devices().filter { it.inputPortCount > 0 }).map { it.first }
 
-    override val devicesChanged: Flow<Unit> = callbackFlow {
+    /** Bluetooth devices the app connected: they stay open (and so listed) until the app ends. */
+    private val bluetooth = ConcurrentHashMap<Int, MidiDevice>()
+    private val bluetoothChanged = MutableSharedFlow<Unit>(extraBufferCapacity = 4)
+
+    /** Connects a Bluetooth LE MIDI device; it then appears in the lists like one plugged in. */
+    fun openBluetooth(device: BluetoothDevice) {
+        val manager = manager ?: throw IOException("This device does not support MIDI.")
+        val opened = AtomicReference<MidiDevice?>()
+        val done = CountDownLatch(1)
+        manager.openBluetoothDevice(device, { midiDevice ->
+            opened.set(midiDevice)
+            done.countDown()
+        }, handler)
+        if (!done.await(BLUETOOTH_TIMEOUT_SECONDS, TimeUnit.SECONDS)) throw IOException("The Bluetooth device did not respond.")
+        val midiDevice = opened.get() ?: throw IOException("The Bluetooth device could not be opened as a MIDI device.")
+        bluetooth[midiDevice.info.id] = midiDevice
+        bluetoothChanged.tryEmit(Unit)
+    }
+
+    override val devicesChanged: Flow<Unit> = merge(bluetoothChanged, deviceCallbacks())
+
+    private fun deviceCallbacks(): Flow<Unit> = callbackFlow {
         val callback = object : MidiManager.DeviceCallback() {
             override fun onDeviceAdded(device: MidiDeviceInfo) {
                 trySend(Unit)
@@ -63,7 +87,7 @@ class AndroidMidiBackend(context: Context, private val piano: AndroidPianoSynth)
             ?: throw IOException("MIDI device $name is not connected.")
         val device = open(info)
         val port = device.openOutputPort(0) ?: run {
-            device.close()
+            release(device)
             throw IOException("MIDI device $name is in use by another app.")
         }
         val messages = MutableSharedFlow<MidiMessage>(extraBufferCapacity = 256)
@@ -80,7 +104,7 @@ class AndroidMidiBackend(context: Context, private val piano: AndroidPianoSynth)
             override fun close() {
                 runCatching { port.disconnect(receiver) }
                 runCatching { port.close() }
-                runCatching { device.close() }
+                release(device)
             }
         }
     }
@@ -91,7 +115,7 @@ class AndroidMidiBackend(context: Context, private val piano: AndroidPianoSynth)
             ?: throw IOException("MIDI device $name is not connected.")
         val device = open(info)
         val port = device.openInputPort(0) ?: run {
-            device.close()
+            release(device)
             throw IOException("MIDI device $name is in use by another app.")
         }
         val encoder = MidiParser()
@@ -103,7 +127,7 @@ class AndroidMidiBackend(context: Context, private val piano: AndroidPianoSynth)
 
             override fun close() {
                 runCatching { port.close() }
-                runCatching { device.close() }
+                release(device)
             }
         }
     }
@@ -111,11 +135,19 @@ class AndroidMidiBackend(context: Context, private val piano: AndroidPianoSynth)
     @Suppress("DEPRECATION") // getDevices() still lists byte-stream devices, which are all we use
     private fun devices(): List<MidiDeviceInfo> {
         val manager = manager ?: return emptyList()
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        val listed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             manager.getDevicesForTransport(MidiManager.TRANSPORT_MIDI_BYTE_STREAM).toList()
         } else {
             manager.devices.toList()
         }
+        // A Bluetooth device whose connection broke is closed and forgotten.
+        bluetooth.entries.removeAll { (id, device) -> (listed.none { it.id == id }).also { gone -> if (gone) runCatching { device.close() } } }
+        return listed
+    }
+
+    /** Closes a device opened for a port, except the Bluetooth connections, which are kept. */
+    private fun release(device: MidiDevice) {
+        if (bluetooth[device.info.id] !== device) runCatching { device.close() }
     }
 
     /** Devices with a readable name each, numbered where several are called the same. */
@@ -132,6 +164,7 @@ class AndroidMidiBackend(context: Context, private val piano: AndroidPianoSynth)
 
     /** Opens [info], waiting for Android's callback (on the MIDI thread) for at most a few seconds. */
     private fun open(info: MidiDeviceInfo): MidiDevice {
+        bluetooth[info.id]?.let { return it }
         val manager = manager ?: throw IOException("This device does not support MIDI.")
         val opened = AtomicReference<MidiDevice?>()
         val done = CountDownLatch(1)
@@ -146,5 +179,6 @@ class AndroidMidiBackend(context: Context, private val piano: AndroidPianoSynth)
     private companion object {
         const val PIANO_SAMPLE_RATE = 44_100
         const val OPEN_TIMEOUT_SECONDS = 5L
+        const val BLUETOOTH_TIMEOUT_SECONDS = 15L
     }
 }

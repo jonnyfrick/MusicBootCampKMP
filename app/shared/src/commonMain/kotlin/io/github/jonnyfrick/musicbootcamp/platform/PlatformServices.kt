@@ -45,6 +45,19 @@ class UnsupportedMidiBackend(override val unavailableReason: String) : MidiBacke
     override fun openOutput(name: String): MidiOutputPort = throw UnsupportedOperationException(unavailableReason)
 }
 
+/**
+ * Connects Bluetooth MIDI devices where the app has to do that itself (Android, iOS); elsewhere
+ * the operating system pairs them and they simply appear in the [MidiBackend]'s lists.
+ */
+fun interface BluetoothMidiConnector {
+    /**
+     * Shows the platform's dialog to choose a device and connects it; it then appears in the
+     * MIDI device lists ([MidiBackend.devicesChanged] fires). Returns when the dialog is done,
+     * also if it was cancelled; throws with a readable message if connecting fails.
+     */
+    suspend fun connect()
+}
+
 /** An opened microphone / line input delivering mono samples in -1..1. */
 interface AudioInputPort {
     val sampleRate: Int
@@ -134,6 +147,8 @@ class PlatformServices(
     val recordings: RecordingStore? = null,
     /** Null where the app cannot render its sound itself (then its own sound cannot be removed). */
     val renderedSynth: RenderedSynth? = null,
+    /** Null where Bluetooth MIDI devices need no connecting in the app, or cannot be used. */
+    val bluetoothMidi: BluetoothMidiConnector? = null,
     /**
      * Debug builds only: the developer tools are available — importing setups of the Java version
      * and tuning the recognition (recording, optimization mode, detection parameters, calibration).

@@ -35,4 +35,7 @@ compose.desktop {
 val dataDirOverride = providers.gradleProperty("musicbootcamp.dataDir")
 tasks.withType<JavaExec>().configureEach {
     dataDirOverride.orNull?.let { systemProperty("musicbootcamp.dataDir", it) }
+    // Runs from Gradle are debug runs with the developer tools (Java import, recognition tuning);
+    // the packaged app has none. `-Pmusicbootcamp.debug=false` shows it as users get it.
+    systemProperty("musicbootcamp.debug", providers.gradleProperty("musicbootcamp.debug").getOrElse("true"))
 }

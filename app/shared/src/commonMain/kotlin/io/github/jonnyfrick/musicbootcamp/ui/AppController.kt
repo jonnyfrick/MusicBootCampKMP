@@ -106,7 +106,21 @@ class AppController(
         private set
 
     val midiUnavailableReason: String? get() = services.midi.unavailableReason
-    val canImportLegacyFiles: Boolean get() = services.legacyFiles != null
+    /** Debug builds only: the Java import and the tools for tuning the recognition are available. */
+    val debugTools: Boolean get() = services.debugTools
+    val canImportLegacyFiles: Boolean get() = debugTools && services.legacyFiles != null
+
+    /**
+     * The preferences as far as they tune the recognition: in a release build always the
+     * defaults, never recording, whatever a debug build may have stored on this device.
+     */
+    private val tuning: AppPreferences
+        get() = if (debugTools) preferences else preferences.copy(
+            recordMicrophone = false,
+            optimizationMode = false,
+            detectionParameters = DetectionParameters(),
+            chordDetectionParameters = emptyMap(),
+        )
 
     var audioInputDevices by mutableStateOf(listOf<String>())
         private set
@@ -142,7 +156,7 @@ class AppController(
     /** Fixed run length in optimization mode (microphone only); null = until stopped. */
     private val optimizationSteps: Int?
         get() = preferences.optimizationSteps.takeIf {
-            preferences.optimizationMode && preferences.inputSource == InputSource.MICROPHONE
+            tuning.optimizationMode && preferences.inputSource == InputSource.MICROPHONE
         }
     private val closers = mutableListOf<() -> Unit>()
     private var micTestPort: AudioInputPort? = null
@@ -164,7 +178,7 @@ class AppController(
     fun load() {
         launchSafely {
             preferences = repository.loadPreferences()
-            learnedTemplates = repository.loadTemplates()
+            if (debugTools) learnedTemplates = repository.loadTemplates()
             val names = repository.setupNames()
             val initial = preferences.lastSetup?.takeIf { it in names } ?: names.firstOrNull()
             setup = initial?.let { runCatching { repository.load(it) }.getOrNull() } ?: Setup(DEFAULT_SETUP_NAME).also { repository.save(it) }
@@ -329,11 +343,11 @@ class AppController(
             "referenceAHz" to preferences.referenceAHz.toString(),
             "midiOutputDevice" to (preferences.midiOutputDevice ?: ""),
             "optimizationSteps" to (optimizationSteps?.toString() ?: ""),
-            "detectionParameters" to preferences.detectionParameters.toJson(),
+            "detectionParameters" to tuning.detectionParameters.toJson(),
             "voices" to settings.mode.voices.toString(),
             "octavesCountAsCorrect" to preferences.octavesCountAsCorrect.toString(),
             "range" to "${settings.lowLimit}..${settings.highLimit}",
-            "chordDetectionParameters" to preferences.chordParameters(settings.mode.voices).toJson(),
+            "chordDetectionParameters" to tuning.chordParameters(settings.mode.voices).toJson(),
         )
         runSummary = null
 
@@ -403,9 +417,9 @@ class AppController(
         // Without headphones the microphone hears the app. If the app renders its synthesizer
         // itself, it knows what it played and removes that; until it can (and with other outputs),
         // input matching the app's current note is ignored.
-        val parameters = preferences.detectionParameters
+        val parameters = tuning.detectionParameters
         val voices = settings.mode.voices
-        val chordParameters = preferences.chordParameters(voices)
+        val chordParameters = tuning.chordParameters(voices)
         val removeOwnSound = if (voices > 1) chordParameters.strokes.echoCancellation else parameters.echoCancellation
         val rendered = if (preferences.usesHeadphones || !removeOwnSound) null else openRenderedOutput(audio.sampleRate)
         val midiOutput = rendered ?: openOutput()
@@ -418,7 +432,7 @@ class AppController(
         } else {
             NoteTracker(audio.sampleRate, parameters = parameters).detectionDelay
         }
-        val recording = if (preferences.recordMicrophone || preferences.optimizationMode) {
+        val recording = if (tuning.recordMicrophone || tuning.optimizationMode) {
             val channels = if (rendered != null) listOf("microphone", "reference") else listOf("microphone")
             services.recordings?.let { SessionRecorder(it.create(), audio.sampleRate, channels) }
         } else {
@@ -464,7 +478,7 @@ class AppController(
         runCatching { withContext(Dispatchers.Default) { recording.finish(recordingInfo) } }
             .onSuccess {
                 message = text(Res.string.msg_recording_saved, recording.name)
-                if (preferences.optimizationMode) runSummary = RunSummary(recording.name, recording.summary())
+                if (tuning.optimizationMode) runSummary = RunSummary(recording.name, recording.summary())
             }
             .onFailure { message = text(Res.string.msg_recording_failed, it.toUiText()) }
     }
@@ -538,7 +552,7 @@ class AppController(
                     preferences.referenceAHz,
                     onNote = { micTestNote = it },
                     onLevel = { microphoneLevel = it },
-                    parameters = preferences.detectionParameters,
+                    parameters = tuning.detectionParameters,
                 )
                 .flowOn(Dispatchers.Default)
                 .collect()
@@ -575,7 +589,7 @@ class AppController(
         calibrationPort = audio
         val notes = (settings.lowLimit..settings.highLimit).toList()
         val calibration = PianoCalibration(
-            audio.sampleRate, notes, preferences.referenceAHz, preferences.chordParameters(2), learnedTemplates,
+            audio.sampleRate, notes, preferences.referenceAHz, tuning.chordParameters(2), learnedTemplates,
         )
         calibrating = true
         calibrationTarget = calibration.target

@@ -98,9 +98,12 @@ class ScreenshotTest {
         }
     }
 
-    private fun services(midi: MidiBackend, store: InMemoryDocumentStore) =
+    private fun services(midi: MidiBackend, store: InMemoryDocumentStore, debugTools: Boolean = true) = PlatformServices(
+        midi, store, legacyFiles = { null }, audio = microphone,
         // Never records anything: the recording switch stays off in the screenshots.
-        PlatformServices(midi, store, legacyFiles = { null }, audio = microphone, recordings = FileRecordingStore(File("build/dev-data/recordings")))
+        recordings = FileRecordingStore(File("build/dev-data/recordings")),
+        debugTools = debugTools,
+    )
 
     /** Shows the app in a window of [width] × [height] dp and waits until it has loaded. */
     private fun app(width: Int, height: Int, services: PlatformServices, locale: Locale = Locale.ENGLISH, test: ComposeUiTest.() -> Unit) {
@@ -215,6 +218,23 @@ class ScreenshotTest {
             click("Eingabe")
             click("Mikrofon (akustisches Klavier)")
             snapshot("phone-de-2-settings-input")
+        }
+    }
+
+    @Test
+    fun aReleaseBuildHasNoDeveloperTools() {
+        // Even if a debug build stored the optimization mode on this device.
+        val preferences = """{"lastSetup":"Demo","inputSource":"MICROPHONE","optimizationMode":true,"detectionParametersRevision":1}"""
+        app(width = 412, height = 915, services(FakeMidi(), store("Demo", "settings_mono.xml", preferences), debugTools = false)) {
+            clickIcon("More options")
+            assertTrue(onAllNodesWithText("Save setup as…").fetchSemanticsNodes().isNotEmpty())
+            assertTrue(onAllNodesWithText("Import setup from MusicBootCamp (Java)…").fetchSemanticsNodes().isEmpty(), "no Java import")
+            click("Save setup as…")
+            click("Cancel")
+            click("Settings")
+            snapshot("phone-9-settings-release")
+            assertTrue(onAllNodesWithText("Recognition").fetchSemanticsNodes().isEmpty(), "no recognition tuning")
+            onNodeWithText("Tuning").assertExists()
         }
     }
 

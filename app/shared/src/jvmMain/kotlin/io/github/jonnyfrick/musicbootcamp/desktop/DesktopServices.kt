@@ -15,7 +15,10 @@ import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 
-/** Services of the desktop (JVM) app. */
+/**
+ * Services of the desktop (JVM) app. The developer tools are on when the system property
+ * `musicbootcamp.debug` is `true`, which `./gradlew :app:desktopApp:run` sets and the packaged app does not.
+ */
 fun desktopServices(dataDirectory: File = defaultDataDirectory()) = PlatformServices(
     midi = JavaSoundMidiBackend(),
     documents = FileDocumentStore(dataDirectory),
@@ -23,6 +26,7 @@ fun desktopServices(dataDirectory: File = defaultDataDirectory()) = PlatformServ
     audio = JavaSoundAudioInput(),
     recordings = FileRecordingStore(File(dataDirectory, "recordings")),
     renderedSynth = GervillSynth(),
+    debugTools = System.getProperty("musicbootcamp.debug") == "true",
 )
 
 /**

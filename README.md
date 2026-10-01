@@ -55,7 +55,8 @@ run from elsewhere without it, the app falls back to ignoring input that matches
 On macOS the first microphone test asks for microphone permission for the app that started Gradle
 (Android Studio or the terminal).
 
-With "Record exercises" (Settings → Recognition) every exercise with microphone input is saved to
+With "Record exercises" (Settings → Recognition, a developer tool: only in debug builds, i.e. when started
+with `./gradlew … run` or installed with `installDebug`; see [MIGRATION.md](MIGRATION.md)) every exercise with microphone input is saved to
 `recordings/` in the data directory: the microphone signal as WAV plus a JSON log of the notes the
 app played, the notes recognised and the evaluations. To see how the current pitch detection handles
 them:

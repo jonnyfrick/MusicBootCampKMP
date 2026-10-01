@@ -134,6 +134,11 @@ class PlatformServices(
     val recordings: RecordingStore? = null,
     /** Null where the app cannot render its sound itself (then its own sound cannot be removed). */
     val renderedSynth: RenderedSynth? = null,
+    /**
+     * Debug builds only: the developer tools are available — importing setups of the Java version
+     * and tuning the recognition (recording, optimization mode, detection parameters, calibration).
+     */
+    val debugTools: Boolean = false,
 ) {
     companion object {
         /** For Android, iOS and web until their MIDI and storage implementations exist. */

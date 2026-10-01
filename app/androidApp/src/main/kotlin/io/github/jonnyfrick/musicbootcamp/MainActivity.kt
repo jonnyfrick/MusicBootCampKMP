@@ -1,6 +1,7 @@
 package io.github.jonnyfrick.musicbootcamp
 
 import android.Manifest
+import android.net.Uri
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -42,10 +43,23 @@ class MainActivity : ComponentActivity() {
         return answer.await()
     }
 
+    private var pickedFiles: CompletableDeferred<List<Uri>>? = null
+    private val filePicker = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        pickedFiles?.complete(uris)
+        pickedFiles = null
+    }
+
+    /** Lets the user choose files (several at once) with the system's file dialog; empty if cancelled. */
+    private suspend fun pickFiles(): List<Uri> {
+        val answer = CompletableDeferred<List<Uri>>().also { pickedFiles = it }
+        filePicker.launch(arrayOf("text/xml", "application/xml", "*/*"))
+        return answer.await()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        controller = AppController(androidServices(this, ::requestMicrophone), scope)
+        controller = AppController(androidServices(this, ::requestMicrophone, ::pickFiles), scope)
 
         // The screen stays on while an exercise runs: the player has their hands on the piano.
         scope.launch {

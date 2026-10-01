@@ -339,6 +339,8 @@ several voices).
 - **MIDI:** `AndroidMidiBackend` with `android.media.midi` (USB keyboards, other apps' MIDI
   services); bytes are parsed by `core/midi/MidiParser` (running status, split chunks, system
   messages skipped). Devices open on a MIDI thread of their own.
+- **Import of Java setups:** the system's file dialog only gives access to picked files, so the
+  settings XML and its `learned_sequences_…` XML are picked together (`AndroidLegacyFilePicker`).
 - **Storage:** setups in the app's private files; recordings in
   `Android/data/io.github.jonnyfrick.musicbootcamp/files/recordings`, reachable over USB.
 - **Lifecycle:** rotating or resizing keeps the activity (`configChanges`), so an exercise keeps

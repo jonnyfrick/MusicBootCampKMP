@@ -1,6 +1,7 @@
 package io.github.jonnyfrick.musicbootcamp.android
 
 import android.content.Context
+import android.net.Uri
 import io.github.jonnyfrick.musicbootcamp.core.audio.RecordingFile
 import io.github.jonnyfrick.musicbootcamp.core.audio.Wav
 import io.github.jonnyfrick.musicbootcamp.core.persistence.DocumentStore
@@ -23,15 +24,20 @@ import java.util.Locale
  * Services of the Android app: setups in the app's private storage, recordings where a computer
  * can fetch them over USB (Android/data/<package>/files/recordings), the microphone, MIDI devices
  * and the app's own piano [PianoSynth][io.github.jonnyfrick.musicbootcamp.core.audio.PianoSynth]
- * as sound output. [requestMicrophone] asks the user for the microphone permission.
+ * as sound output. [requestMicrophone] asks the user for the microphone permission, [pickFiles]
+ * lets them choose files (to import a setup of the Java version).
  */
-fun androidServices(context: Context, requestMicrophone: suspend () -> Boolean): PlatformServices {
+fun androidServices(
+    context: Context,
+    requestMicrophone: suspend () -> Boolean,
+    pickFiles: suspend () -> List<Uri>,
+): PlatformServices {
     val app = context.applicationContext
     val synth = AndroidPianoSynth()
     return PlatformServices(
         midi = AndroidMidiBackend(app, synth),
         documents = FileDocumentStore(app.filesDir),
-        legacyFiles = null,
+        legacyFiles = AndroidLegacyFilePicker(app, pickFiles),
         audio = AndroidAudioInput(app, requestMicrophone),
         recordings = FileRecordingStore(File(app.getExternalFilesDir(null) ?: app.filesDir, "recordings")),
         renderedSynth = synth,

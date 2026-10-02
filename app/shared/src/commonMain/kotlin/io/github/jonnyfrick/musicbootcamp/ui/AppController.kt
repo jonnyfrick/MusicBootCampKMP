@@ -177,7 +177,10 @@ class AppController(
 
     fun load() {
         launchSafely {
-            preferences = repository.loadPreferences()
+            preferences = repository.loadPreferences().let {
+                // Where there is no microphone (or no access to one at all), the keyboard is the input.
+                if (it.inputSource == InputSource.MICROPHONE && services.audio.unavailableReason != null) it.copy(inputSource = InputSource.MIDI) else it
+            }
             if (debugTools) learnedTemplates = repository.loadTemplates()
             val names = repository.setupNames()
             val initial = preferences.lastSetup?.takeIf { it in names } ?: names.firstOrNull()
@@ -197,7 +200,7 @@ class AppController(
 
     /**
      * A MIDI device was plugged in or removed: update the lists and say what changed. A keyboard
-     * plugged in is meant to be played on, so it becomes the MIDI input at once (the output stays:
+     * plugged in is meant to be played on, so it becomes the input at once (the output stays:
      * the app's own synthesizer can remove its sound from the microphone, a keyboard's cannot).
      */
     private fun onMidiDevicesChanged() {
@@ -209,7 +212,10 @@ class AppController(
         val removed = before - after
         if (added.isEmpty() && removed.isEmpty()) return
         val newInput = inputDevices.firstOrNull { it !in inputsBefore && it != JAVA_SEQUENCER }
-        if (newInput != null && !running) selectInputDevice(newInput)
+        if (newInput != null && !running) {
+            selectInputDevice(newInput)
+            setInputSource(InputSource.MIDI) // the default is the microphone
+        }
         message = UiText.Joined(
             buildList {
                 if (added.isNotEmpty()) add(text(Res.string.msg_midi_connected, added.joinToString()))

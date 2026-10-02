@@ -1,6 +1,7 @@
 package io.github.jonnyfrick.musicbootcamp.ui
 
 import io.github.jonnyfrick.musicbootcamp.core.persistence.InMemoryDocumentStore
+import io.github.jonnyfrick.musicbootcamp.core.persistence.InputSource
 import io.github.jonnyfrick.musicbootcamp.platform.MidiBackend
 import io.github.jonnyfrick.musicbootcamp.platform.MidiInputPort
 import io.github.jonnyfrick.musicbootcamp.platform.MidiOutputPort
@@ -44,6 +45,7 @@ class DeviceHotplugTest {
         withTimeout(5_000) { while (controller.preferences.midiInputDevice == null) delay(10) }
 
         assertEquals("Digital Piano", controller.preferences.midiInputDevice)
+        assertEquals(InputSource.MIDI, controller.preferences.inputSource, "and the input is the keyboard, not the microphone")
         assertEquals(null, controller.preferences.midiOutputDevice, "the output is not changed")
         scope.cancel()
     }

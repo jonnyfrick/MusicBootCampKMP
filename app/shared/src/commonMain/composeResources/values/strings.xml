@@ -125,7 +125,7 @@
     <string name="midi_in">MIDI In (your keyboard)</string>
     <string name="midi_out">MIDI Out (sound)</string>
     <string name="bluetooth_midi">Connect Bluetooth MIDI…</string>
-    <string name="devices_hint">A keyboard you plug in is chosen as MIDI In right away. Devices are opened when you press Start.</string>
+    <string name="devices_hint">A keyboard you plug in becomes the input right away. Devices are opened when you press Start.</string>
     <string name="piano_credits">“%1$s” plays samples of the Salamander Grand Piano by Alexander Holm (CC BY 3.0).</string>
     <string name="own_synth_hint">“%1$s” is played by the app itself, so it can remove its sound from the microphone signal.</string>
     <string name="test_midi">Test MIDI</string>

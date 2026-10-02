@@ -14,6 +14,7 @@ object SettingsRules {
 
     const val MAX_INTERVAL_PRIORITY = 10
     const val MAX_SUSTAIN = 100
+    const val MAX_LATE_ANSWER_TOLERANCE_MILLIS = 1000
 
     /** Java: `syncHighLimitLabel`. */
     fun checkHighLimit(input: String, lowLimit: Int, previous: Int): Checked<Int> {

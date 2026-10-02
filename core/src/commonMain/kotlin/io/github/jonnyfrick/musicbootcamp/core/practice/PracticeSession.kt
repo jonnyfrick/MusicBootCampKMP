@@ -77,6 +77,10 @@ class PracticeSession(
     /** Note-ons of a chord answer still arriving (a recognised chord comes as one note-on per voice). */
     private val chordBuffer = mutableListOf<Int>()
 
+    /** After one note answered a unison: how many repeats of it ([unisonNote]) belong to that answer. */
+    private var repeatsToSkip = 0
+    private var unisonNote = -1
+
     private val verdicts = mutableListOf<StepVerdict>()
 
     /** The last verdict announced on a key press, so further presses that change nothing are quiet. */
@@ -114,12 +118,25 @@ class PracticeSession(
             }
             return emptyList()
         }
+        // The chord recognition sends a unison as the same note once per voice; the first one
+        // already answered it (below), the others are not a new answer.
+        if (repeatsToSkip > 0 && message.data1 == unisonNote) {
+            repeatsToSkip--
+            return emptyList()
+        }
+        repeatsToSkip = 0
         chordBuffer += message.data1
-        if (chordBuffer.size < settings.mode.voices) return emptyList()
+        val waiting = open.filter { !it.resolved }
+        if (chordBuffer.size < settings.mode.voices) {
+            // On a keyboard a unison is one key: it answers a step that gave one, as without tolerance.
+            val unison = waiting.firstOrNull { it.chord == chordBuffer.toList() } ?: return emptyList()
+            repeatsToSkip = settings.mode.voices - chordBuffer.size
+            unisonNote = message.data1
+            repeat(repeatsToSkip) { chordBuffer += unison.chord.single() }
+        }
         val answer = chordBuffer.toList()
         chordBuffer.clear()
 
-        val waiting = open.filter { !it.resolved }
         if (waiting.isEmpty()) return emptyList() // only the first answer of a step counts
         val chord = answer.distinct().sorted()
         val matching = waiting.firstOrNull { it.chord == chord }
@@ -143,6 +160,14 @@ class PracticeSession(
     /** The tolerance of step [number] is over: it (and older open steps) counts as missed if unanswered. */
     fun expire(number: Int): List<Evaluation> {
         val current = open.lastOrNull()
+        // Keys pressed but not enough for a chord (one of two): that is the answer, an incomplete one.
+        if (chordBuffer.isNotEmpty()) {
+            open.firstOrNull { !it.resolved && it.number <= number && it !== current }?.let { step ->
+                step.answer = chordBuffer.toList()
+                step.resolved = true
+                chordBuffer.clear()
+            }
+        }
         open.filter { it.number <= number && it !== current }.forEach { it.resolved = true }
         return evaluateResolved()
     }
@@ -171,6 +196,8 @@ class PracticeSession(
         } else {
             deferring = true
             val current = open.lastOrNull()
+            // A key pressed after the step's answer was complete belongs to no answer.
+            if (current?.resolved == true) chordBuffer.clear()
             when {
                 current == null -> null
                 current.resolved -> evaluateStep(open.removeLast()) // older ones are done by then
@@ -204,6 +231,10 @@ class PracticeSession(
     fun end(): List<Evaluation> {
         if (steps == 0) return emptyList()
         if (!deferring) return listOf(evaluate(steps - 1))
+        if (chordBuffer.isNotEmpty()) {
+            open.firstOrNull { !it.resolved }?.answer = chordBuffer.toList()
+            chordBuffer.clear()
+        }
         open.forEach { it.resolved = true }
         return buildList { while (open.isNotEmpty()) add(evaluateStep(open.removeFirst())) }
     }

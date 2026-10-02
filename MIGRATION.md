@@ -139,8 +139,8 @@ finds its way by the texts on screen and runs an exercise against a fake MIDI sy
   Within the range the behaviour and the consumed random numbers are unchanged, so the golden master
   tests still pass. Tests: `CoreTest.learnedSequencesOutsideTheRangeDoNotLeadTheExerciseAway`,
   `CoreTest.randomStepsFindBackIntoTheRange`.
-- **Late answers with the microphone.** In Java a key press counted for whichever step was running
-  when it arrived. With microphone input (single notes), a step still without an answer when the
+- **Late answers.** In Java a key press counted for whichever step was running
+  when it arrived. Now a step still without an answer when the
   next note starts stays open for the late-answer tolerance (`PracticeSession.step(deferEvaluation
   = true)`, `PracticeRunner(lateAnswerTolerance = …)`); at a fast tempo several steps can be open.
   A key press answers the oldest open step — or, if it is exactly the note of a later open step,
@@ -151,8 +151,12 @@ finds its way by the texts on screen and runs an exercise against a fake MIDI sy
   then lost.) The next note still starts on time. A step answered in time is
   evaluated at once as before, so the exercise and the random numbers consumed are unchanged; only
   a deferred evaluation stores its mistake after the next note was chosen, so it can influence the
-  steps after the next one only. MIDI input keeps the Java behaviour (tolerance 0). Tests:
-  `LateAnswerTest`.
+  steps after the next one only. The tolerance belongs to the setup (the exercise's settings, under
+  Tempo: it goes with the breathing time) and applies to MIDI keyboards too, since late answers
+  are the player's, not the microphone's; 0 is the Java behaviour. (At first it was a preference
+  for the microphone only.) On a keyboard chords arrive key by key: one key answers a unison, as
+  without tolerance, and keys that do not complete a chord count as a wrong answer when the
+  step's time is over, without shifting later answers. Tests: `LateAnswerTest`.
 - **Octaves count as correct with the microphone** (Settings → Input, on by default): a
   recognised note or chord with exactly the pitch classes of one of the last given ones counts as
   that one (`matchIgnoringOctaves`). The recognition confuses octaves far more often than the
@@ -224,8 +228,8 @@ messages, so the exercise logic is the same as with a MIDI keyboard.
   ignored then, which left too little time at fast tempos: at 1 s breathing time and 50 % sustain
   only the last 300 ms of a step.) A correct answer played while the same note still sounds is
   still ignored; subtracting the app's own sound from the microphone signal is planned.
-- Late answers: see "Deliberate changes". The tolerance (Settings → Input → "Late answers", 0–1000 ms,
-  default 150 ms, `lateAnswerToleranceMillis` in `preferences.json`) counts from the key stroke:
+- Late answers: see "Deliberate changes". The tolerance (the exercise's settings → Tempo → "Late answers",
+  0–1000 ms, default 150 ms, `lateAnswerToleranceMillis` in the setup's settings) counts from the key stroke:
   `NoteTracker.detectionDelay` (about 58 ms) is added, because the note reaches the exercise only
   once it is recognised. Audio buffering (one 11.6 ms block on the desktop) is not added.
 - Recording (Settings → Recognition → "Record exercises", off by default): `core/audio/SessionRecorder` writes
@@ -397,8 +401,11 @@ Desktop data directory: `~/Library/Application Support/MusicBootCamp` (macOS),
 `%APPDATA%\MusicBootCamp` (Windows), `$XDG_DATA_HOME/musicbootcamp` (Linux).
 Override for test runs: `./gradlew :app:desktopApp:run -Pmusicbootcamp.dataDir=/some/dir`.
 
-- `setup-<name>.json`: `{"version":1,"name":…,"settings":{…},"learnedSequences":{"MONOPHONIC":[[level 0 sequences],…,[level 4]]}}`,
+- `setup-<name>.json`: `{"version":2,"name":…,"settings":{…},"learnedSequences":{"MONOPHONIC":[[level 0 sequences],…,[level 4]]}}`,
   with notes as `60` and chords as `[60, 67]`. Your `learned_sequences_settings_lin.xml` shrinks from 3.4 MB to 0.4 MB.
+- Format versions: 2 moved the late-answer tolerance from the preferences into each setup's
+  settings; a format-1 setup takes over the preferences' value when it is loaded
+  (`SetupRepository.load`, test `SetupFormatTest`) and is saved as format 2 from then on.
 - `preferences.json`: MIDI devices, Kammerton A, last used setup.
 - Files are written through a temp file and an atomic move.
 

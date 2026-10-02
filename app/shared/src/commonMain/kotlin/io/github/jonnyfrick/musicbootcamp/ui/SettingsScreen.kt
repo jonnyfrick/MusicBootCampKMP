@@ -35,7 +35,6 @@ import androidx.compose.ui.unit.dp
 import io.github.jonnyfrick.musicbootcamp.core.midi.NoteNames
 import io.github.jonnyfrick.musicbootcamp.core.midi.Tuning
 import io.github.jonnyfrick.musicbootcamp.core.persistence.InputSource
-import io.github.jonnyfrick.musicbootcamp.core.persistence.MAX_LATE_ANSWER_TOLERANCE_MILLIS
 import io.github.jonnyfrick.musicbootcamp.resources.*
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
@@ -195,16 +194,6 @@ private fun InputSettings(controller: AppController) {
             onCheckedChange = controller::setOctavesCountAsCorrect,
             enabled = !running,
             supporting = stringResource(Res.string.octaves_hint),
-        )
-        IntSliderSetting(
-            title = stringResource(Res.string.late_answers),
-            value = preferences.lateAnswerToleranceMillis,
-            range = 0..MAX_LATE_ANSWER_TOLERANCE_MILLIS,
-            step = 50,
-            onChange = controller::setLateAnswerTolerance,
-            enabled = !running,
-            valueText = stringResource(Res.string.value_ms, preferences.lateAnswerToleranceMillis),
-            supporting = stringResource(Res.string.late_answers_hint),
         )
         MicrophoneTest(controller)
     }

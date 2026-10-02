@@ -18,7 +18,6 @@ import io.github.jonnyfrick.musicbootcamp.core.practice.PracticeStatus
 import io.github.jonnyfrick.musicbootcamp.core.midi.MidiMessage
 import io.github.jonnyfrick.musicbootcamp.core.model.PracticeMode
 import io.github.jonnyfrick.musicbootcamp.core.persistence.InputSource
-import io.github.jonnyfrick.musicbootcamp.core.persistence.MAX_LATE_ANSWER_TOLERANCE_MILLIS
 import io.github.jonnyfrick.musicbootcamp.core.persistence.OPTIMIZATION_STEP_RANGE
 import io.github.jonnyfrick.musicbootcamp.core.pitch.AudioBlock
 import io.github.jonnyfrick.musicbootcamp.core.pitch.DetectedNote
@@ -338,7 +337,7 @@ class AppController(
         recordingInfo = mapOf(
             "breathingTime" to settings.breathingTime.toString(),
             "sustain" to settings.sustain.toString(),
-            "lateAnswerToleranceMillis" to preferences.lateAnswerToleranceMillis.toString(),
+            "lateAnswerToleranceMillis" to settings.lateAnswerToleranceMillis.toString(),
             "usesHeadphones" to preferences.usesHeadphones.toString(),
             "referenceAHz" to preferences.referenceAHz.toString(),
             "midiOutputDevice" to (preferences.midiOutputDevice ?: ""),
@@ -353,7 +352,7 @@ class AppController(
 
         val practice = PracticeRunner(
             scope, settings, setup.memory(), practiceOutput, input,
-            lateAnswerTolerance = if (microphone) lateAnswerTolerance else Duration.ZERO,
+            lateAnswerTolerance = lateAnswerTolerance,
             maxSteps = optimizationSteps,
             onStep = { step ->
                 recorder?.step(step)
@@ -402,6 +401,7 @@ class AppController(
 
     /** Opens the MIDI output (tuned) and the MIDI keyboard; returns the keyboard's messages. */
     private fun openMidiInput(): Flow<MidiMessage> {
+        lateAnswerTolerance = settings.lateAnswerToleranceMillis.milliseconds // a key press arrives at once
         openOutput()
         val inputName = preferences.midiInputDevice?.takeIf { it in inputDevices } ?: defaultDevice(inputDevices)
             ?: throw UserError(text(Res.string.msg_no_midi_input))
@@ -427,7 +427,7 @@ class AppController(
         gate = ownSound
         // The tolerance counts from the key stroke; the note arrives only once it is recognised.
         // A chord is decided only after its analysis window.
-        lateAnswerTolerance = preferences.lateAnswerToleranceMillis.milliseconds + if (voices > 1) {
+        lateAnswerTolerance = settings.lateAnswerToleranceMillis.milliseconds + if (voices > 1) {
             chordParameters.windowEndMillis.milliseconds + NoteTracker(audio.sampleRate, parameters = chordParameters.strokes).detectionDelay
         } else {
             NoteTracker(audio.sampleRate, parameters = parameters).detectionDelay
@@ -755,9 +755,6 @@ class AppController(
         updatePreferences { it.copy(chordDetectionParameters = it.chordDetectionParameters + (voices to parameters)) }
     fun setRecordMicrophone(record: Boolean) = updatePreferences { it.copy(recordMicrophone = record) }
     val recordingsLocation: String? get() = services.recordings?.location
-    fun setLateAnswerTolerance(millis: Int) =
-        updatePreferences { it.copy(lateAnswerToleranceMillis = millis.coerceIn(0, MAX_LATE_ANSWER_TOLERANCE_MILLIS)) }
-
     fun selectAudioInputDevice(name: String?) {
         val wasTesting = micTesting
         stopMicTest()

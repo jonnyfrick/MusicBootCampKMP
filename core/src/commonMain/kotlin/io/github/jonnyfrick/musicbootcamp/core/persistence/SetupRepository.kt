@@ -42,7 +42,14 @@ class SetupRepository(private val store: DocumentStore) {
     /** Loads the setup called [name]; null when it does not exist. */
     suspend fun load(name: String): Setup? {
         val text = store.read(fileName(name)) ?: return null
-        return Setup.fromDocument(json.decodeFromString(SetupDocument.serializer(), text))
+        val document = json.decodeFromString(SetupDocument.serializer(), text)
+        val setup = Setup.fromDocument(document)
+        // Format 1 had one late-answer tolerance for all setups, in the preferences: each setup
+        // takes it over the first time it is loaded (and is saved in the current format from then on).
+        if (document.version < 2) {
+            setup.settings = setup.settings.copy(lateAnswerToleranceMillis = loadPreferences().lateAnswerToleranceMillis)
+        }
+        return setup
     }
 
     suspend fun save(setup: Setup) {

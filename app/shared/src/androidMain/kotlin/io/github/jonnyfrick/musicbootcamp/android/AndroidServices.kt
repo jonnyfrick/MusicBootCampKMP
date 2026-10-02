@@ -1,6 +1,9 @@
 package io.github.jonnyfrick.musicbootcamp.android
 
+import android.Manifest
 import android.content.Context
+import android.content.Intent
+import android.content.IntentSender
 import android.content.pm.ApplicationInfo
 import android.net.Uri
 import io.github.jonnyfrick.musicbootcamp.core.audio.RecordingFile
@@ -25,21 +28,25 @@ import java.util.Locale
  * Services of the Android app: setups in the app's private storage, recordings where a computer
  * can fetch them over USB (Android/data/<package>/files/recordings), the microphone, MIDI devices
  * and the app's own piano [PianoSynth][io.github.jonnyfrick.musicbootcamp.core.audio.PianoSynth]
- * as sound output. [requestMicrophone] asks the user for the microphone permission, [pickFiles]
- * lets them choose files (to import a setup of the Java version).
+ * as sound output. What needs the activity comes in as functions: [requestPermission] asks the
+ * user for a permission, [pickFiles] lets them choose files (to import a setup of the Java
+ * version), [launchChooser] shows a system dialog and returns its result (null if cancelled).
  */
 fun androidServices(
     context: Context,
-    requestMicrophone: suspend () -> Boolean,
+    requestPermission: suspend (String) -> Boolean,
     pickFiles: suspend () -> List<Uri>,
+    launchChooser: suspend (IntentSender) -> Intent?,
 ): PlatformServices {
     val app = context.applicationContext
     val synth = AndroidPianoSynth()
+    val midi = AndroidMidiBackend(app, synth)
     return PlatformServices(
-        midi = AndroidMidiBackend(app, synth),
+        midi = midi,
         documents = FileDocumentStore(app.filesDir),
         legacyFiles = AndroidLegacyFilePicker(app, pickFiles),
-        audio = AndroidAudioInput(app, requestMicrophone),
+        audio = AndroidAudioInput(app) { requestPermission(Manifest.permission.RECORD_AUDIO) },
+        bluetoothMidi = if (AndroidBluetoothMidi.isSupported(app)) AndroidBluetoothMidi(app, midi, requestPermission, launchChooser) else null,
         recordings = FileRecordingStore(File(app.getExternalFilesDir(null) ?: app.filesDir, "recordings")),
         renderedSynth = synth,
         // Debug builds (installDebug, Android Studio) are debuggable, release builds are not.

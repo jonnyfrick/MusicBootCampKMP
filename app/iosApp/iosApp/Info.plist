@@ -4,5 +4,9 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>MusicBootCamp listens to your piano to check the notes you play.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>MusicBootCamp connects to Bluetooth MIDI keyboards.</string>
 </dict>
 </plist>

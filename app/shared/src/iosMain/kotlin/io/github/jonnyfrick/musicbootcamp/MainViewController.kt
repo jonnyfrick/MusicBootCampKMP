@@ -1,7 +1,10 @@
 package io.github.jonnyfrick.musicbootcamp
 
 import androidx.compose.ui.window.ComposeUIViewController
-import io.github.jonnyfrick.musicbootcamp.platform.PlatformServices
+import io.github.jonnyfrick.musicbootcamp.ios.iosServices
 import io.github.jonnyfrick.musicbootcamp.ui.App
 
-fun MainViewController() = ComposeUIViewController { App(PlatformServices.withoutMidi("iOS")) }
+fun MainViewController() = run {
+    val services = iosServices()
+    ComposeUIViewController { App(services) }
+}

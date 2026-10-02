@@ -720,6 +720,19 @@ class AppController(
         audioInputDevices = runCatching { services.audio.devices() }.getOrDefault(emptyList())
     }
 
+    val canConnectBluetoothMidi: Boolean get() = services.bluetoothMidi != null
+
+    /** Lets the user connect a Bluetooth MIDI device; once connected it is chosen like one plugged in. */
+    fun connectBluetoothMidi() {
+        val connector = services.bluetoothMidi ?: return
+        if (running) return
+        launchSafely {
+            runCatching { connector.connect() }
+                .onSuccess { onMidiDevicesChanged() }
+                .onFailure { if (it is CancellationException) throw it else message = text(Res.string.msg_bluetooth_failed, it.toUiText()) }
+        }
+    }
+
     /** The synthesizer the app renders itself, whose sound it can remove from the microphone. */
     val ownSynthName: String? get() = services.renderedSynth?.deviceName
 

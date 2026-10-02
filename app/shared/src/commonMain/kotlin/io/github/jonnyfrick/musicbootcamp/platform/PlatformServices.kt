@@ -145,8 +145,11 @@ class PlatformServices(
     val audio: AudioInputBackend = UnsupportedAudioInput("Microphone input is only implemented in the desktop app so far."),
     /** Null where there is no file system to record into. */
     val recordings: RecordingStore? = null,
-    /** Null where the app cannot render its sound itself (then its own sound cannot be removed). */
-    val renderedSynth: RenderedSynth? = null,
+    /**
+     * The synthesizers the app renders itself, each also a MIDI output of [midi] under its
+     * [RenderedSynth.deviceName]; only their sound can be removed from the microphone signal.
+     */
+    val renderedSynths: List<RenderedSynth> = emptyList(),
     /** Null where Bluetooth MIDI devices need no connecting in the app, or cannot be used. */
     val bluetoothMidi: BluetoothMidiConnector? = null,
     /**

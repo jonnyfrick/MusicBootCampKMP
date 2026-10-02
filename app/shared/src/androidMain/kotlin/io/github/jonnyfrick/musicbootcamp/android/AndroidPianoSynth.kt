@@ -4,7 +4,8 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
 import android.os.Build
-import io.github.jonnyfrick.musicbootcamp.core.audio.PianoSynth
+import io.github.jonnyfrick.musicbootcamp.platform.BUILT_IN_PIANO
+import io.github.jonnyfrick.musicbootcamp.platform.Instruments
 import io.github.jonnyfrick.musicbootcamp.core.midi.MidiMessage
 import io.github.jonnyfrick.musicbootcamp.platform.PlayedAudioBuffer
 import io.github.jonnyfrick.musicbootcamp.platform.RenderedOutputPort
@@ -12,22 +13,17 @@ import io.github.jonnyfrick.musicbootcamp.platform.RenderedSynth
 import kotlin.concurrent.thread
 
 /**
- * The app's own [PianoSynth] on the loudspeaker: Android has no real-time synthesizer to send
+ * The app's own piano ([Instruments.piano]) on the loudspeaker: Android has no real-time synthesizer to send
  * MIDI to. Rendered by the app, so its sound can be removed from the microphone signal.
  */
 class AndroidPianoSynth : RenderedSynth {
-    override val deviceName = NAME
+    override val deviceName = BUILT_IN_PIANO
 
     override fun open(sampleRate: Int): RenderedOutputPort = AndroidSynthPort(sampleRate)
-
-    companion object {
-        /** Stored as the MIDI output in the preferences, so it must not change. */
-        const val NAME = "MusicBootCamp Piano"
-    }
 }
 
 private class AndroidSynthPort(sampleRate: Int) : RenderedOutputPort {
-    private val synth = PianoSynth(sampleRate)
+    private val synth = Instruments.piano(sampleRate)
     private val played = PlayedAudioBuffer()
     private val lock = Any()
 

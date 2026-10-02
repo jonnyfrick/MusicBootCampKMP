@@ -51,9 +51,9 @@ import platform.Foundation.CFBridgingRelease
 
 /**
  * MIDI through CoreMIDI (keyboards over a USB adapter, network sessions, Bluetooth devices once
- * connected), plus the app's own piano as an output that is always there.
+ * connected).
  */
-internal class IosMidiBackend(private val piano: IosPianoSynth) : MidiBackend {
+internal class IosMidiBackend : MidiBackend {
     private val changes = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
 
     private val client: MIDIClientRef = memScoped {
@@ -69,7 +69,7 @@ internal class IosMidiBackend(private val piano: IosPianoSynth) : MidiBackend {
 
     override fun inputDevices(): List<String> = named(sources()).map { it.first }
 
-    override fun outputDevices(): List<String> = listOf(piano.deviceName) + named(destinations()).map { it.first }
+    override fun outputDevices(): List<String> = named(destinations()).map { it.first }
 
     override fun openInput(name: String): MidiInputPort {
         val source = named(sources()).firstOrNull { it.first == name }?.second
@@ -100,7 +100,6 @@ internal class IosMidiBackend(private val piano: IosPianoSynth) : MidiBackend {
     }
 
     override fun openOutput(name: String): MidiOutputPort {
-        if (name == piano.deviceName) return piano.open(0)
         val destination = named(destinations()).firstOrNull { it.first == name }?.second
             ?: throw IllegalStateException("MIDI device $name is not connected.")
         val port = memScoped {

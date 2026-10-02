@@ -11,6 +11,7 @@ import io.github.jonnyfrick.musicbootcamp.core.audio.Wav
 import io.github.jonnyfrick.musicbootcamp.core.persistence.DocumentStore
 import io.github.jonnyfrick.musicbootcamp.platform.PlatformServices
 import io.github.jonnyfrick.musicbootcamp.platform.RecordingStore
+import io.github.jonnyfrick.musicbootcamp.platform.SynthMidiBackend
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -40,15 +41,15 @@ fun androidServices(
 ): PlatformServices {
     val app = context.applicationContext
     val synth = AndroidPianoSynth()
-    val midi = AndroidMidiBackend(app, synth)
+    val midi = AndroidMidiBackend(app)
     return PlatformServices(
-        midi = midi,
+        midi = SynthMidiBackend(midi, synth),
         documents = FileDocumentStore(app.filesDir),
         legacyFiles = AndroidLegacyFilePicker(app, pickFiles),
         audio = AndroidAudioInput(app) { requestPermission(Manifest.permission.RECORD_AUDIO) },
         bluetoothMidi = if (AndroidBluetoothMidi.isSupported(app)) AndroidBluetoothMidi(app, midi, requestPermission, launchChooser) else null,
         recordings = FileRecordingStore(File(app.getExternalFilesDir(null) ?: app.filesDir, "recordings")),
-        renderedSynth = synth,
+        renderedSynths = listOf(synth),
         // Debug builds (installDebug, Android Studio) are debuggable, release builds are not.
         debugTools = app.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0,
     )

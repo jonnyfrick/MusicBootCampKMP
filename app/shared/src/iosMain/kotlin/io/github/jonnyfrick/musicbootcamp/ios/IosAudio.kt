@@ -2,7 +2,9 @@
 
 package io.github.jonnyfrick.musicbootcamp.ios
 
-import io.github.jonnyfrick.musicbootcamp.core.audio.PianoSynth
+import io.github.jonnyfrick.musicbootcamp.core.audio.SoftwareSynth
+import io.github.jonnyfrick.musicbootcamp.platform.BUILT_IN_PIANO
+import io.github.jonnyfrick.musicbootcamp.platform.Instruments
 import io.github.jonnyfrick.musicbootcamp.core.midi.MidiMessage
 import io.github.jonnyfrick.musicbootcamp.platform.AudioInputBackend
 import io.github.jonnyfrick.musicbootcamp.platform.AudioInputPort
@@ -146,7 +148,7 @@ private class IosAudioPort(private val audio: IosAudioEngine) : AudioInputPort {
 
 /** The app's own piano on the loudspeaker; rendered by the app, so its sound can be removed from the microphone signal. */
 internal class IosPianoSynth(private val audio: IosAudioEngine) : RenderedSynth {
-    override val deviceName = "MusicBootCamp Piano"
+    override val deviceName = BUILT_IN_PIANO
 
     // The hardware decides the sample rate; microphone and synthesizer share one engine.
     override fun open(sampleRate: Int): RenderedOutputPort = IosSynthPort(audio)
@@ -160,14 +162,14 @@ private class IosSynthPort(private val audio: IosAudioEngine) : RenderedOutputPo
     private var lastFrames = 0
 
     private val format: AVAudioFormat
-    private val synth: PianoSynth
+    private val synth: SoftwareSynth
     private val node: AVAudioSourceNode
 
     init {
         audio.configure(record = false)
         val sampleRate = audio.engine.outputNode.outputFormatForBus(0u).sampleRate.takeIf { it > 0 } ?: 48_000.0
         format = AVAudioFormat(standardFormatWithSampleRate = sampleRate, channels = 1u)
-        synth = PianoSynth(sampleRate.toInt())
+        synth = Instruments.piano(sampleRate.toInt())
         // Called on the audio thread for every block the loudspeaker needs.
         node = AVAudioSourceNode(format = format) { _, _, frameCount, bufferList ->
             val frames = frameCount.toInt()

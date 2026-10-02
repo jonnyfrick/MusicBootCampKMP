@@ -162,6 +162,9 @@ finds its way by the texts on screen and runs an exercise against a fake MIDI sy
   that one (`matchIgnoringOctaves`). The recognition confuses octaves far more often than the
   player (weak bass fundamentals of real pianos; a unison heard with its octave), so this removes
   many false mistakes; playing in the wrong octave is no longer caught. MIDI input is unchanged.
+- **The microphone is the default input** (Settings → Input): most players sit at an acoustic
+  piano, and it needs no device. Plugging in (or connecting) a MIDI keyboard switches the input
+  to it; without a microphone the keyboard is the input from the start.
 - **Given notes hidden by default.** The point is to hear them; "Show notes" on the Practice screen
   reveals them (stored in `preferences.json`).
 - **Settings edited in place** (no OK/Cancel dialogs); they are locked while an exercise runs,

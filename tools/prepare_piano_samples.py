@@ -2,12 +2,12 @@
 """Prepares the piano samples the app ships, from the Salamander Grand Piano V3
 (Alexander Holm, CC BY 3.0, https://github.com/sfzinstruments/SalamanderGrandPiano).
 
-One velocity layer (v10 of 16, about mezzo-forte), every minor third from A0 to C8, as the
+One velocity layer (by default v8 of 16, about mezzo-piano to mezzo-forte), every minor third from A0 to C8, as the
 original is sampled. Each sample becomes mono, 44.1 kHz, 16 bit, starts at its onset, is cut
 to a few seconds (longer in the bass) with a fade-out, and all are scaled by one common
 factor, so the notes keep their natural balance. Output: FLAC files named by MIDI note.
 
-Usage: prepare_piano_samples.py <folder with the …v10.flac files> <output folder>
+Usage: prepare_piano_samples.py <folder with the …v<layer>.flac files> <output folder> [layer, default 8]
 Needs macOS `afconvert` and the `flac` command line tool.
 """
 import array
@@ -18,7 +18,7 @@ import tempfile
 import wave
 
 RATE = 44100
-LAYER = "v10"
+DEFAULT_LAYER = 8
 NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 NOTES = list(range(21, 109, 3))  # A0, C1, D#1, … C8
 
@@ -43,11 +43,11 @@ def load(path):
     return samples
 
 
-def main(source, target):
+def main(source, target, layer=DEFAULT_LAYER):
     os.makedirs(target, exist_ok=True)
     cut = {}
     for note in NOTES:
-        samples = load(os.path.join(source, f"{name(note)}{LAYER}.flac"))
+        samples = load(os.path.join(source, f"{name(note)}v{layer}.flac"))
         peak = max(abs(s) for s in samples)
         # The onset: the first sample above 1 % of the peak, minus 2 ms.
         onset = next(i for i, s in enumerate(samples) if abs(s) > peak * 0.01)
@@ -72,8 +72,8 @@ def main(source, target):
             out = os.path.join(target, f"{note:03d}.flac")
             subprocess.run(["flac", "--best", "--silent", "--force", "--no-padding", "--no-seektable", "-o", out, wav], check=True)
             total += os.path.getsize(out)
-    print(f"{len(cut)} samples, {total / 1e6:.1f} MB, gain {gain:.2f}")
+    print(f"layer v{layer}: {len(cut)} samples, {total / 1e6:.1f} MB, gain {gain:.2f}")
 
 
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2])
+    main(sys.argv[1], sys.argv[2], int(sys.argv[3]) if len(sys.argv) > 3 else DEFAULT_LAYER)

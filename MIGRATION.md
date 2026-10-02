@@ -329,8 +329,7 @@ several voices).
 `app/shared/src/androidMain/.../android/` (created by `androidServices` in `MainActivity`):
 
 - **Sound:** Android has no real-time synthesizer to send MIDI to, so the app plays its own
-  `core/audio/PianoSynth` (decaying, slightly stretched partials, sustain pedal, pitch bend with the
-  range set by RPN 0 as `Tuning` sends it) through an `AudioTrack`: `AndroidPianoSynth`, the MIDI
+  piano (see "The app's own piano: a sampler" below) through an `AudioTrack`: `AndroidPianoSynth`, the MIDI
   output "MusicBootCamp Piano". Being rendered by the app, it is a `RenderedSynth` like Gervill, so
   its sound is removed from the microphone signal the same way; both keep what they played in
   `PlayedAudioBuffer`.
@@ -354,6 +353,28 @@ several voices).
   output stays, so the app's own synthesizer keeps removing its sound). Test: `DeviceHotplugTest`.
 - Tests: `PianoSynthTest` (pitch as our recognition hears it, tuning, pedal, full scale, parser).
 
+### The app's own piano: a sampler
+
+Android, iOS and browsers have no real-time synthesizer, and only a sound the app renders itself
+can be removed from the microphone signal. So the app has its own instrument, the MIDI output
+"MusicBootCamp Piano" (`BUILT_IN_PIANO`) on every platform, also on the desktop next to Gervill
+(`JavaSoundPiano`); `SynthMidiBackend` adds it to a platform's MIDI devices.
+
+- **Samples:** the Salamander Grand Piano V3 by Alexander Holm (CC BY 3.0; credited in Settings →
+  MIDI devices and in `files/piano/LICENSE.txt`). The app plays every note with one velocity, so
+  one of the 16 velocity layers is enough: 30 samples (every minor third from A0 to C8), mono,
+  44.1 kHz, trimmed to 2.5–7 s, 2.7 MB as FLAC in the app's resources. `tools/prepare_piano_samples.py`
+  makes them from the original files.
+- **Code:** `core/audio/Flac` decodes FLAC in common code (bit-exact: `FlacTest` checks the MD5 the
+  encoder stored), `SampleSet` holds the recordings, `Sampler` plays a note from the nearest
+  recording, re-pitched, and `VoiceSynth` is what it shares with the synthetic `PianoSynth` (MIDI
+  handling, sustain pedal, pitch bend for the reference A, mixing). `Instruments` (app) decodes the
+  samples in the background when the app starts; until then, or if that fails, notes are synthetic.
+- **More instruments** are further `SampleSet`s: prepare the samples, add them to the resources and
+  to `Instruments`.
+- Tests: `FlacTest`, `SamplerTest`, `InstrumentsTest` (every note from C2 to C7 of the shipped
+  samples is heard as itself by the app's pitch detection; also writes `build/piano-demo.wav`).
+
 ### iOS, web and Bluetooth MIDI
 
 - **Bluetooth MIDI** (`BluetoothMidiConnector`, Settings → MIDI devices → "Connect Bluetooth
@@ -365,13 +386,13 @@ several voices).
   (macOS: Audio MIDI Setup → Bluetooth) and they are ordinary MIDI devices; in the browser too.
 - **iOS** (`app/shared/src/iosMain/.../ios/`, `iosServices`): CoreMIDI with hot-plug notifications
   (`IosMidiBackend`, bytes through `MidiParser`); one `AVAudioEngine` for the microphone (a tap on
-  the input node, audio session in measurement mode: no call processing) and the app's `PianoSynth`
+  the input node, audio session in measurement mode: no call processing) and the app's piano
   (an `AVAudioSourceNode`), which is a `RenderedSynth` as on Android; setups in Application Support.
   `Info.plist` has the usage texts for microphone and Bluetooth.
 - **Web** (`app/shared/src/webMain/.../web/WebServices.kt`, `webServices`, the same code for
   JavaScript and WebAssembly): Web MIDI API (not in Safari; without it the microphone and the piano
   still work), `getUserMedia` without echo cancellation, noise suppression and gain control, the
-  `PianoSynth` through the Web Audio API (also a `RenderedSynth`), setups in local storage. The
+  app's piano through the Web Audio API (also a `RenderedSynth`), setups in local storage. The
   browser side is a few small JavaScript functions exchanging only numbers, strings and callbacks.
 
 ### Developer tools only in debug builds

@@ -29,6 +29,7 @@ import io.github.jonnyfrick.musicbootcamp.core.pitch.detectedNotes
 import io.github.jonnyfrick.musicbootcamp.core.pitch.toNoteOn
 import io.github.jonnyfrick.musicbootcamp.core.practice.OwnSoundGate
 import io.github.jonnyfrick.musicbootcamp.platform.AudioInputPort
+import io.github.jonnyfrick.musicbootcamp.platform.Instruments
 import io.github.jonnyfrick.musicbootcamp.platform.MidiInputPort
 import io.github.jonnyfrick.musicbootcamp.platform.MidiOutputPort
 import io.github.jonnyfrick.musicbootcamp.platform.PlatformServices
@@ -187,6 +188,11 @@ class AppController(
             ready = true
         }
         launchSafely { services.midi.devicesChanged.collect { onMidiDevicesChanged() } }
+        // The piano's samples: decoded in the background; until then its notes are synthetic.
+        scope.launch {
+            runCatching { withContext(Dispatchers.Default) { Instruments.load() } }
+            pianoSampled = Instruments.isPianoSampled
+        }
     }
 
     /**
@@ -484,13 +490,12 @@ class AppController(
     }
 
     /**
-     * The app's own rendering of the chosen MIDI output, if it can do that (Gervill on the
-     * desktop), so its sound can be removed from the microphone signal; null otherwise.
+     * The app's own rendering of the chosen MIDI output, if it can do that (its own piano, or
+     * Gervill on the desktop), so its sound can be removed from the microphone signal; null otherwise.
      */
     private fun openRenderedOutput(sampleRate: Int): RenderedOutputPort? {
-        val synth = services.renderedSynth ?: return null
         refreshDevices()
-        if (selectedOutputDevice() != synth.deviceName) return null
+        val synth = services.renderedSynths.firstOrNull { it.deviceName == selectedOutputDevice() } ?: return null
         val port = runCatching { synth.open(sampleRate) }.getOrElse {
             message = text(Res.string.msg_own_sound_failed, it.toUiText())
             return null
@@ -733,8 +738,12 @@ class AppController(
         }
     }
 
-    /** The synthesizer the app renders itself, whose sound it can remove from the microphone. */
-    val ownSynthName: String? get() = services.renderedSynth?.deviceName
+    /** The synthesizers the app renders itself, whose sound it can remove from the microphone; null if none. */
+    val ownSynthName: String? get() = services.renderedSynths.joinToString(" / ") { it.deviceName }.ifEmpty { null }
+
+    /** The app's piano plays recorded samples (they are loaded when the app starts). */
+    var pianoSampled by mutableStateOf(false)
+        private set
 
     fun setShowGivenNotes(show: Boolean) = updatePreferences { it.copy(showGivenNotes = show) }
 

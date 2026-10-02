@@ -27,13 +27,13 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * MIDI devices through `android.media.midi` (USB keyboards, and other apps' MIDI services), plus
- * the app's own piano as an output that is always there.
+ * MIDI devices through `android.media.midi` (USB keyboards, Bluetooth devices once connected, and
+ * other apps' MIDI services).
  *
  * Android calls "input port" what receives data (a device's input: our output) and "output port"
  * what sends data (a keyboard's output: our input).
  */
-class AndroidMidiBackend(context: Context, private val piano: AndroidPianoSynth) : MidiBackend {
+class AndroidMidiBackend(context: Context) : MidiBackend {
     private val manager: MidiManager? =
         if (context.packageManager.hasSystemFeature(PackageManager.FEATURE_MIDI)) context.getSystemService(MidiManager::class.java) else null
 
@@ -44,8 +44,7 @@ class AndroidMidiBackend(context: Context, private val piano: AndroidPianoSynth)
 
     override fun inputDevices(): List<String> = named(devices().filter { it.outputPortCount > 0 }).map { it.first }
 
-    override fun outputDevices(): List<String> =
-        listOf(piano.deviceName) + named(devices().filter { it.inputPortCount > 0 }).map { it.first }
+    override fun outputDevices(): List<String> = named(devices().filter { it.inputPortCount > 0 }).map { it.first }
 
     /** Bluetooth devices the app connected: they stay open (and so listed) until the app ends. */
     private val bluetooth = ConcurrentHashMap<Int, MidiDevice>()
@@ -110,7 +109,6 @@ class AndroidMidiBackend(context: Context, private val piano: AndroidPianoSynth)
     }
 
     override fun openOutput(name: String): MidiOutputPort {
-        if (name == piano.deviceName) return piano.open(PIANO_SAMPLE_RATE)
         val info = named(devices().filter { it.inputPortCount > 0 }).firstOrNull { it.first == name }?.second
             ?: throw IOException("MIDI device $name is not connected.")
         val device = open(info)
@@ -177,7 +175,6 @@ class AndroidMidiBackend(context: Context, private val piano: AndroidPianoSynth)
     }
 
     private companion object {
-        const val PIANO_SAMPLE_RATE = 44_100
         const val OPEN_TIMEOUT_SECONDS = 5L
         const val BLUETOOTH_TIMEOUT_SECONDS = 15L
     }

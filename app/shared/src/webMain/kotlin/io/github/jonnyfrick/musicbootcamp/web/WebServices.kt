@@ -1,10 +1,11 @@
 package io.github.jonnyfrick.musicbootcamp.web
 
-import io.github.jonnyfrick.musicbootcamp.core.audio.PianoSynth
 import io.github.jonnyfrick.musicbootcamp.core.midi.MidiMessage
 import io.github.jonnyfrick.musicbootcamp.core.persistence.DocumentStore
 import io.github.jonnyfrick.musicbootcamp.platform.AudioInputBackend
 import io.github.jonnyfrick.musicbootcamp.platform.AudioInputPort
+import io.github.jonnyfrick.musicbootcamp.platform.BUILT_IN_PIANO
+import io.github.jonnyfrick.musicbootcamp.platform.Instruments
 import io.github.jonnyfrick.musicbootcamp.platform.MidiBackend
 import io.github.jonnyfrick.musicbootcamp.platform.MidiInputPort
 import io.github.jonnyfrick.musicbootcamp.platform.MidiOutputPort
@@ -12,6 +13,7 @@ import io.github.jonnyfrick.musicbootcamp.platform.PlatformServices
 import io.github.jonnyfrick.musicbootcamp.platform.PlayedAudioBuffer
 import io.github.jonnyfrick.musicbootcamp.platform.RenderedOutputPort
 import io.github.jonnyfrick.musicbootcamp.platform.RenderedSynth
+import io.github.jonnyfrick.musicbootcamp.platform.SynthMidiBackend
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -23,7 +25,7 @@ import kotlin.coroutines.suspendCoroutine
 /**
  * Services of the web app (JavaScript and WebAssembly alike): setups in the browser's local
  * storage, MIDI through the Web MIDI API (Chromium browsers and Firefox), the microphone through
- * `getUserMedia`, and the app's own [PianoSynth] through the Web Audio API as sound output.
+ * `getUserMedia`, and the app's own piano ([Instruments.piano]) through the Web Audio API as sound output.
  *
  * The browser side is a handful of small JavaScript functions (below) that keep their objects in
  * `globalThis.__mbc` and exchange only numbers, strings and callbacks with Kotlin, which is what
@@ -33,11 +35,11 @@ fun webServices(): PlatformServices {
     initState()
     val piano = WebPianoSynth()
     return PlatformServices(
-        midi = WebMidiBackend(piano),
+        midi = SynthMidiBackend(WebMidiBackend(), piano),
         documents = LocalStorageDocumentStore(),
         legacyFiles = null,
         audio = WebAudioInput(),
-        renderedSynth = piano,
+        renderedSynths = listOf(piano),
     )
 }
 
@@ -59,14 +61,14 @@ private class LocalStorageDocumentStore : DocumentStore {
 
 /** The app's own piano on the loudspeaker; rendered by the app, so its sound can be removed from the microphone signal. */
 private class WebPianoSynth : RenderedSynth {
-    override val deviceName = "MusicBootCamp Piano"
+    override val deviceName = BUILT_IN_PIANO
 
     // The browser decides the sample rate; microphone and synthesizer share one audio context.
     override fun open(sampleRate: Int): RenderedOutputPort = WebSynthPort()
 }
 
 private class WebSynthPort : RenderedOutputPort {
-    private val synth = PianoSynth(audioSampleRate())
+    private val synth = Instruments.piano(audioSampleRate())
     private val played = PlayedAudioBuffer()
     private var block = FloatArray(BLOCK_FRAMES)
     private var rendered = 0L
@@ -96,8 +98,8 @@ private class WebSynthPort : RenderedOutputPort {
     }
 }
 
-/** MIDI through the Web MIDI API, plus the app's own piano as an output that is always there. */
-private class WebMidiBackend(private val piano: WebPianoSynth) : MidiBackend {
+/** MIDI through the Web MIDI API. */
+private class WebMidiBackend : MidiBackend {
     private val changes = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
 
     init {
@@ -112,7 +114,7 @@ private class WebMidiBackend(private val piano: WebPianoSynth) : MidiBackend {
 
     override fun inputDevices(): List<String> = midiNames(true).split('\n').filter { it.isNotEmpty() }
 
-    override fun outputDevices(): List<String> = listOf(piano.deviceName) + midiNames(false).split('\n').filter { it.isNotEmpty() }
+    override fun outputDevices(): List<String> = midiNames(false).split('\n').filter { it.isNotEmpty() }
 
     override fun openInput(name: String): MidiInputPort {
         val messages = MutableSharedFlow<MidiMessage>(extraBufferCapacity = 256)
@@ -125,7 +127,6 @@ private class WebMidiBackend(private val piano: WebPianoSynth) : MidiBackend {
     }
 
     override fun openOutput(name: String): MidiOutputPort {
-        if (name == piano.deviceName) return piano.open(0)
         return object : MidiOutputPort {
             override fun send(message: MidiMessage) = midiSend(name, message.status, message.data1, message.data2)
             override fun close() = Unit

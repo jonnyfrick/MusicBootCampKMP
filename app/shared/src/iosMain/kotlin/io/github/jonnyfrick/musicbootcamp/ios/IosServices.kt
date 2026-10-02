@@ -5,6 +5,7 @@ package io.github.jonnyfrick.musicbootcamp.ios
 import io.github.jonnyfrick.musicbootcamp.core.persistence.DocumentStore
 import io.github.jonnyfrick.musicbootcamp.platform.BluetoothMidiConnector
 import io.github.jonnyfrick.musicbootcamp.platform.PlatformServices
+import io.github.jonnyfrick.musicbootcamp.platform.SynthMidiBackend
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.Dispatchers
@@ -34,11 +35,11 @@ fun iosServices(): PlatformServices {
     val audio = IosAudioEngine()
     val piano = IosPianoSynth(audio)
     return PlatformServices(
-        midi = IosMidiBackend(piano),
+        midi = SynthMidiBackend(IosMidiBackend(), piano),
         documents = FileDocumentStore(dataDirectory()),
         legacyFiles = null,
         audio = IosAudioInput(audio),
-        renderedSynth = piano,
+        renderedSynths = listOf(piano),
         bluetoothMidi = IosBluetoothMidi(),
         // Debug builds from Xcode have the developer tools; there is no recording store on iOS yet.
         debugTools = Platform.isDebugBinary,

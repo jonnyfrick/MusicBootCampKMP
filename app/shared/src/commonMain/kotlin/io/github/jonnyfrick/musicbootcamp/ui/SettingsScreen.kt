@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import io.github.jonnyfrick.musicbootcamp.core.midi.NoteNames
 import io.github.jonnyfrick.musicbootcamp.core.midi.Tuning
 import io.github.jonnyfrick.musicbootcamp.core.persistence.InputSource
+import io.github.jonnyfrick.musicbootcamp.platform.BUILT_IN_PIANO
 import io.github.jonnyfrick.musicbootcamp.resources.*
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
@@ -264,6 +265,7 @@ private fun MidiSettings(controller: AppController) {
         }
         SettingHint(stringResource(Res.string.devices_hint))
         controller.ownSynthName?.let { SettingHint(stringResource(Res.string.own_synth_hint, it)) }
+        if (controller.pianoSampled && BUILT_IN_PIANO in controller.outputDevices) SettingHint(stringResource(Res.string.piano_credits, BUILT_IN_PIANO))
     }
     SettingsSection(stringResource(Res.string.test_midi)) {
         ButtonRow {

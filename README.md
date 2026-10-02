@@ -86,6 +86,10 @@ storage): `./gradlew :app:webApp:wasmJsBrowserDevelopmentRun`, then http://local
 
 iOS (CoreMIDI, microphone, the app's own piano) via Xcode in [`app/iosApp`](app/iosApp), on an Apple Silicon Mac.
 
+Sound: every platform offers the MIDI output "MusicBootCamp Piano", the app's own sampled piano (Salamander Grand
+Piano by Alexander Holm, CC BY 3.0; see `app/shared/src/commonMain/composeResources/files/piano/LICENSE.txt`).
+On the desktop it is listed next to Gervill.
+
 Bluetooth MIDI: on Android and iOS under Settings → MIDI devices → "Connect Bluetooth MIDI…"; on macOS connect the
 device in Audio MIDI Setup → Bluetooth, then it is listed like any MIDI device.
 

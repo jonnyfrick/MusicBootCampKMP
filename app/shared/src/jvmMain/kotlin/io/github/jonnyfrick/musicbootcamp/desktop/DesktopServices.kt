@@ -4,6 +4,7 @@ import io.github.jonnyfrick.musicbootcamp.core.persistence.DocumentStore
 import io.github.jonnyfrick.musicbootcamp.platform.LegacyFilePicker
 import io.github.jonnyfrick.musicbootcamp.platform.LegacySelection
 import io.github.jonnyfrick.musicbootcamp.platform.PlatformServices
+import io.github.jonnyfrick.musicbootcamp.platform.SynthMidiBackend
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.swing.Swing
 import kotlinx.coroutines.sync.Mutex
@@ -19,15 +20,19 @@ import java.nio.file.StandardCopyOption
  * Services of the desktop (JVM) app. The developer tools are on when the system property
  * `musicbootcamp.debug` is `true`, which `./gradlew :app:desktopApp:run` sets and the packaged app does not.
  */
-fun desktopServices(dataDirectory: File = defaultDataDirectory()) = PlatformServices(
-    midi = JavaSoundMidiBackend(),
-    documents = FileDocumentStore(dataDirectory),
-    legacyFiles = AwtLegacyFilePicker(),
-    audio = JavaSoundAudioInput(),
-    recordings = FileRecordingStore(File(dataDirectory, "recordings")),
-    renderedSynth = GervillSynth(),
-    debugTools = System.getProperty("musicbootcamp.debug") == "true",
-)
+fun desktopServices(dataDirectory: File = defaultDataDirectory()): PlatformServices {
+    val piano = JavaSoundPiano()
+    return PlatformServices(
+        // Gervill stays the output chosen by default; the app's piano is listed after the devices.
+        midi = SynthMidiBackend(JavaSoundMidiBackend(), piano, first = false),
+        documents = FileDocumentStore(dataDirectory),
+        legacyFiles = AwtLegacyFilePicker(),
+        audio = JavaSoundAudioInput(),
+        recordings = FileRecordingStore(File(dataDirectory, "recordings")),
+        renderedSynths = listOf(GervillSynth(), piano),
+        debugTools = System.getProperty("musicbootcamp.debug") == "true",
+    )
+}
 
 /**
  * macOS: ~/Library/Application Support, Windows: %APPDATA%, else $XDG_DATA_HOME or ~/.local/share.

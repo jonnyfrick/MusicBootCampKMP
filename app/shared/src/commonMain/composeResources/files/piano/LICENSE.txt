@@ -1,0 +1,13 @@
+The piano samples in this folder are derived from the
+
+    Salamander Grand Piano V3
+    by Alexander Holm
+    https://archive.org/details/SalamanderGrandPianoV3
+    https://github.com/sfzinstruments/SalamanderGrandPiano
+
+licensed under the Creative Commons Attribution 3.0 Unported License
+(https://creativecommons.org/licenses/by/3.0/).
+
+Changes: one velocity layer (v10) only; mixed to mono, resampled to 44.1 kHz / 16 bit,
+trimmed to the first seconds of each note with a fade-out, scaled by a common factor and
+encoded as FLAC (see tools/prepare_piano_samples.py in the MusicBootCampKMP repository).

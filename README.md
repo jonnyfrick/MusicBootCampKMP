@@ -83,6 +83,8 @@ with a phone connected (USB debugging on), or `assembleDebug` for the APK in
 
 Web (Web MIDI in Chromium browsers and Firefox, microphone, the app's own piano; setups in the browser's local
 storage): `./gradlew :app:webApp:wasmJsBrowserDevelopmentRun`, then http://localhost:8080.
+Every push to `master` publishes it at https://jonnyfrick.github.io/MusicBootCampKMP/ (GitHub Pages,
+`.github/workflows/pages.yml`); it is a static site, each browser keeps its own data.
 
 iOS (CoreMIDI, microphone, the app's own piano) via Xcode in [`app/iosApp`](app/iosApp), on an Apple Silicon Mac.
 

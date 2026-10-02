@@ -151,8 +151,15 @@ class LateAnswerTest {
         val second = session.step(deferEvaluation = true)
         assertTrue(second.evaluationPending)
 
-        assertEquals(emptyList(), session.onMidiInput(key(first[1])), "half a chord is no answer yet")
-        assertEquals(listOf(Evaluation(true, false)), session.onMidiInput(key(first[0])), "late, and in any order")
+        if (first[0] == first[1]) {
+            // A unison is answered by its note once (one key on a keyboard); the repeat the chord
+            // recognition sends for the second voice is not another answer.
+            assertEquals(listOf(Evaluation(true, false)), session.onMidiInput(key(first[0])), "late")
+            assertEquals(emptyList(), session.onMidiInput(key(first[1])), "the repeat belongs to it")
+        } else {
+            assertEquals(emptyList(), session.onMidiInput(key(first[1])), "half a chord is no answer yet")
+            assertEquals(listOf(Evaluation(true, false)), session.onMidiInput(key(first[0])), "late, and in any order")
+        }
 
         session.onMidiInput(key(second.given[0]))
         session.onMidiInput(key(second.given[1] + 1))
@@ -282,5 +289,47 @@ class LateAnswerTest {
         time += 150.milliseconds
         assertTrue(gate.accepts(key(60)))
         assertFalse(gate.accepts(key(64)))
+    }
+
+    /** With a tolerance on a MIDI keyboard, chords arrive key by key, not as recognised chords. */
+    private fun duoSession() = PracticeSession(
+        PracticeSettings(mode = PracticeMode.TWO_VOICES_PURE_RANDOM, lowLimit = 48, highLimit = 72, startPosition = 60),
+        LearnedSequences(), KotlinRandomSource(Random(3)),
+    ) { }
+
+    @Test
+    fun onAKeyboardOneKeyAnswersAUnison() {
+        val session = duoSession()
+        // Step until a unison is given, answering every step in between with its two keys.
+        var given = session.step(deferEvaluation = true).given
+        var guard = 0
+        while (given[0] != given[1]) {
+            given.forEach { session.onMidiInput(key(it)) }
+            given = session.step(deferEvaluation = true).given
+            check(++guard < 500) { "no unison in 500 steps" }
+        }
+        session.onMidiInput(key(given[0]))
+        val next = session.step(deferEvaluation = true)
+        assertEquals(true, next.previousCorrect, "one key for both voices")
+        assertFalse(next.evaluationPending)
+        // The next answer is not disturbed by anything left over.
+        next.given.distinct().forEach { session.onMidiInput(key(it)) }
+        assertEquals(true, session.step(deferEvaluation = true).previousCorrect)
+    }
+
+    @Test
+    fun oneKeyOfTwoIsAWrongAnswerAndDoesNotShiftTheNextOne() {
+        val session = duoSession()
+        var given = session.step(deferEvaluation = true).given
+        while (given[0] == given[1]) {
+            session.onMidiInput(key(given[0]))
+            given = session.step(deferEvaluation = true).given
+        }
+        session.onMidiInput(key(given[0])) // only one of the two notes
+        val second = session.step(deferEvaluation = true)
+        assertTrue(second.evaluationPending)
+        assertEquals(listOf(Evaluation(false, false)), session.expire(second.openStep!!), "incomplete: wrong")
+        second.given.distinct().forEach { session.onMidiInput(key(it)) }
+        assertEquals(true, session.step(deferEvaluation = true).previousCorrect, "the next answer stands on its own")
     }
 }

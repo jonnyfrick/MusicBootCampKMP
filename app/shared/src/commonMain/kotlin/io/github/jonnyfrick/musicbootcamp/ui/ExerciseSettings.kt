@@ -67,6 +67,16 @@ internal fun ExerciseSettings(controller: AppController) {
             fineSteps = true,
         )
         IntSliderSetting(
+            title = stringResource(Res.string.late_answers),
+            value = settings.lateAnswerToleranceMillis,
+            range = 0..SettingsRules.MAX_LATE_ANSWER_TOLERANCE_MILLIS,
+            step = 50,
+            onChange = { value -> update { it.copy(lateAnswerToleranceMillis = value) } },
+            enabled = enabled,
+            valueText = stringResource(Res.string.value_ms, settings.lateAnswerToleranceMillis),
+            supporting = stringResource(Res.string.late_answers_hint),
+        )
+        IntSliderSetting(
             title = stringResource(Res.string.sustain),
             value = settings.sustain,
             range = 0..SettingsRules.MAX_SUSTAIN,

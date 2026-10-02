@@ -59,7 +59,10 @@ internal data class SetupDocument(
     val learnedSequences: Map<PracticeMode, List<List<LearnedSequence>>> = emptyMap(),
 )
 
-internal const val SETUP_FORMAT_VERSION = 1
+/**
+ * 2: the late-answer tolerance is part of each setup's settings (1: one value in the preferences).
+ */
+internal const val SETUP_FORMAT_VERSION = 2
 
 /** Machine-wide preferences (Java: the MIDI part of every settings file). */
 @Serializable
@@ -78,10 +81,11 @@ data class AppPreferences(
     /** With headphones the microphone cannot hear the app, so input is accepted at any time. */
     val usesHeadphones: Boolean = false,
     /**
-     * Microphone input: how late after the next note starts a key stroke still counts as the
-     * answer to the previous step, in milliseconds.
+     * Format 1 only, where the late-answer tolerance was one value for all setups (and the
+     * microphone only). Now [PracticeSettings.lateAnswerToleranceMillis]; this is what setups
+     * still in format 1 get when they are loaded. Nothing changes it any more.
      */
-    val lateAnswerToleranceMillis: Int = DEFAULT_LATE_ANSWER_TOLERANCE_MILLIS,
+    val lateAnswerToleranceMillis: Int = PracticeSettings.DEFAULT_LATE_ANSWER_TOLERANCE_MILLIS,
     /** Microphone input: record each exercise (audio and event log) to tune the pitch detection. */
     val recordMicrophone: Boolean = false,
     /**
@@ -112,9 +116,6 @@ const val DETECTION_PARAMETERS_REVISION = 1
 
 const val DEFAULT_OPTIMIZATION_STEPS = 12
 val OPTIMIZATION_STEP_RANGE = 5..50
-
-const val DEFAULT_LATE_ANSWER_TOLERANCE_MILLIS = 150
-const val MAX_LATE_ANSWER_TOLERANCE_MILLIS = 1000
 
 @Serializable
 enum class InputSource {

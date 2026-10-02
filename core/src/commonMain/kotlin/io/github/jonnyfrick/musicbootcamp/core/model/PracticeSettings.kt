@@ -62,6 +62,11 @@ data class PracticeSettings(
     val learnNewSequences: Boolean = false,
     /** Stored like in the Java version; no algorithm uses it yet. */
     val transpositionsProbability: Double = 0.0,
+    /**
+     * How late after the next note starts a key stroke still counts as the answer to the previous
+     * step, in milliseconds; 0 = the Java behaviour (an answer must come before the next note).
+     */
+    val lateAnswerToleranceMillis: Int = DEFAULT_LATE_ANSWER_TOLERANCE_MILLIS,
 ) {
     init {
         require(intervalPriorities.size == INTERVAL_COUNT) { "Expected $INTERVAL_COUNT interval priorities" }
@@ -75,6 +80,7 @@ data class PracticeSettings(
 
     companion object {
         const val INTERVAL_COUNT = 11
+        const val DEFAULT_LATE_ANSWER_TOLERANCE_MILLIS = 150
 
         /** Labels of the interval sliders, index = semitones - 1. */
         val INTERVAL_LABELS = listOf("b2", "2", "b3", "3", "4", "b5", "5", "b6", "6", "7", "j7")

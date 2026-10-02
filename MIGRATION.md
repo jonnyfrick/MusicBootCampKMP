@@ -11,9 +11,9 @@ how the port was verified.
 |---|---|---|
 | UI | Swing dialogs (NetBeans form editor) | Compose Multiplatform, Material 3, adaptive (phone, tablet, desktop), English and German |
 | Timing | `java.util.Timer` + `TimerTask` | Coroutines (`PracticeRunner`) |
-| MIDI | `javax.sound.midi` | `MidiBackend` interface; desktop with `javax.sound.midi`, Android with `android.media.midi` |
+| MIDI | `javax.sound.midi` | `MidiBackend` interface; desktop with `javax.sound.midi`, Android with `android.media.midi`, iOS with CoreMIDI, web with the Web MIDI API |
 | Storage | Hand-written XML, one settings + one learned-sequences file per setup | Versioned JSON via kotlinx.serialization; one-way XML import |
-| Platforms | Desktop (JVM) | Desktop and Android fully working (MIDI, microphone, storage); iOS and web compile and show the UI but have no MIDI or audio yet |
+| Platforms | Desktop (JVM) | Desktop, Android, iOS and web all have MIDI, microphone, sound and storage; desktop and Android are tested at the instrument, the web app in the browser without devices, iOS only compiles so far |
 | Tests | none | Golden master tests against recorded Java output + unit tests |
 
 ## Project layout
@@ -253,8 +253,7 @@ messages, so the exercise logic is the same as with a MIDI keyboard.
   decisions (`NoteTracker.trace`) and a spectrogram PNG (microphone, reference, predicted own
   sound, levels), optionally a parameter sweep (see README).
 - Desktop capture: `app/shared/src/jvmMain/.../JavaSoundAudio.kt` (javax.sound.sampled, 44.1 kHz
-  mono); Android: see below. iOS (`AVAudioEngine`) and web (`getUserMedia` + AudioWorklet) have the
-  `AudioInputBackend` interface but no implementation yet.
+  mono); Android, iOS and web: see below.
 - "Test microphone" in Settings → Input shows the level and the recognised note with its cents deviation.
 - Tests (`PitchDetectionTest`) use synthetic piano tones with inharmonic partials, a weak bass
   fundamental and hammer noise: every note 36–96, legato, sustain pedal, repeated keys, 442 Hz
@@ -355,6 +354,26 @@ several voices).
   output stays, so the app's own synthesizer keeps removing its sound). Test: `DeviceHotplugTest`.
 - Tests: `PianoSynthTest` (pitch as our recognition hears it, tuning, pedal, full scale, parser).
 
+### iOS, web and Bluetooth MIDI
+
+- **Bluetooth MIDI** (`BluetoothMidiConnector`, Settings → MIDI devices → "Connect Bluetooth
+  MIDI…" where the app has to connect devices itself): Android shows the system's companion-device
+  dialog filtered to the MIDI service (`AndroidBluetoothMidi`; no location or scan permission, only
+  `BLUETOOTH_CONNECT` from Android 12) and keeps the connection open in `AndroidMidiBackend`; iOS
+  shows Apple's `CABTMIDICentralViewController`. A connected device appears in the device lists
+  and is chosen like one plugged in. On macOS, Windows and Linux the system pairs such devices
+  (macOS: Audio MIDI Setup → Bluetooth) and they are ordinary MIDI devices; in the browser too.
+- **iOS** (`app/shared/src/iosMain/.../ios/`, `iosServices`): CoreMIDI with hot-plug notifications
+  (`IosMidiBackend`, bytes through `MidiParser`); one `AVAudioEngine` for the microphone (a tap on
+  the input node, audio session in measurement mode: no call processing) and the app's `PianoSynth`
+  (an `AVAudioSourceNode`), which is a `RenderedSynth` as on Android; setups in Application Support.
+  `Info.plist` has the usage texts for microphone and Bluetooth.
+- **Web** (`app/shared/src/webMain/.../web/WebServices.kt`, `webServices`, the same code for
+  JavaScript and WebAssembly): Web MIDI API (not in Safari; without it the microphone and the piano
+  still work), `getUserMedia` without echo cancellation, noise suppression and gain control, the
+  `PianoSynth` through the Web Audio API (also a `RenderedSynth`), setups in local storage. The
+  browser side is a few small JavaScript functions exchanging only numbers, strings and callbacks.
+
 ### Developer tools only in debug builds
 
 The import of Java XML setups and everything for tuning the recognition (Settings → Recognition:
@@ -429,9 +448,12 @@ The import is one-way: practice done in the new app does not flow back into the 
   recognition does well without it. If recognition turns out weaker on other pianos, rooms or
   phones, calibration could help and would then move out of the developer tools (into
   Settings → Input, with a simpler flow).
-- **MIDI and audio on iOS and web:** iOS (CoreMIDI, `AVAudioEngine`) and web (Web MIDI API, Chromium
-  only; `getUserMedia`) each need a `MidiBackend`, an `AudioInputBackend` and a persistent
-  `DocumentStore`, like Android. The UI already runs there.
+- **Untested platform code:** iOS (never run: this Mac cannot build for an iPhone), Bluetooth MIDI
+  on Android and iOS, and microphone and MIDI in the browser need a first test with real devices.
+- **Web audio on the main thread:** the web app captures and renders with `ScriptProcessorNode`
+  and analyses on the browser's main thread. If that stutters, move both into an `AudioWorklet`.
+- **iOS:** no recording store yet (so no optimization mode), no import of Java setups, and the
+  microphone tap delivers blocks of about 100 ms, which delays recognition accordingly.
 - **Two-voice sequence order** (see above): decide whether to reverse it. If you do, convert existing memories
   at the same time.
 - The Mac here is Intel (`macos_x64`), a Kotlin/Native host that Kotlin marks as deprecated; iOS builds will need an Apple Silicon Mac in future.

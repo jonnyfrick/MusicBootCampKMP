@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "web-wasm",
+      "runtimeExecutable": "./gradlew",
+      "runtimeArgs": [":app:webApp:wasmJsBrowserDevelopmentRun", "--no-configuration-cache", "-q"],
+      "port": 8080
+    }
+  ]
+}

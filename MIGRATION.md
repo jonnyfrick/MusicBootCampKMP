@@ -357,10 +357,11 @@ several voices).
     lost); the Android reader queues blocks without limit, has a second of system buffer and
     audio priority, so it is not held up by the analysis. Test: `PlayedAudioBufferTest`.
   - The answer to the first step was ignored while the app's note sounded (three seconds at that
-    tempo): before the app's sound can be removed, `OwnSoundGate` dropped every chord of the
-    app's notes. A chord is now the app's own only within 0.9 s of the app's attack
-    (`acceptsChord`): the recognition only sees what a stroke adds, and the app's note has one
-    attack. Single notes keep the old rule.
+    tempo; at 1 s per step with single notes the same happened to answers 0.55 s after the note):
+    before the app's sound can be removed, `OwnSoundGate` dropped everything matching the app's
+    notes while they sounded. A note is now the app's own only within 0.45 s of the app's attack,
+    a chord within 0.9 s: the recognition only sees what a stroke adds, and the app's note has
+    one attack.
   - Recordings now log `outputUnderruns` and `referenceResyncs` (`RenderedOutputPort.diagnostics`).
 - **Storage:** setups in the app's private files; recordings in
   `Android/data/io.github.jonnyfrick.musicbootcamp/files/recordings`, reachable over USB.

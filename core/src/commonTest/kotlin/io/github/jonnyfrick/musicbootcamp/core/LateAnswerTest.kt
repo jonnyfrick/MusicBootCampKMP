@@ -275,19 +275,29 @@ class LateAnswerTest {
     @Test
     fun ownSoundGateLetsOtherNotesThroughWhileTheAppPlays() {
         val time = TestTimeSource()
-        val gate = OwnSoundGate({ }, releaseTime = 200.milliseconds, timeSource = time)
+        val gate = OwnSoundGate({ }, timeSource = time)
         gate.send(MidiMessage.noteOn(60, 80))
-        assertFalse(gate.accepts(key(60)), "the app's own note")
+        time += 200.milliseconds
+        assertFalse(gate.accepts(key(60)), "the app's own attack")
         assertFalse(gate.accepts(key(72)), "an octave of it, a typical detection error")
         assertTrue(gate.accepts(key(62)), "a late answer to the previous note")
+    }
 
-        time += 500.milliseconds
+    @Test
+    fun ownSoundGateTakesANoteForTheAppsOnlyRightAfterItsAttack() {
+        // Found live on a phone at 1 s per step: the player's answer to the first step came 0.55 s
+        // after the app's note, which still sounded, and was dropped as the app's own.
+        val time = TestTimeSource()
+        val gate = OwnSoundGate({ }, timeSource = time)
+        gate.send(MidiMessage.noteOn(60, 80))
+        time += 180.milliseconds
+        assertFalse(gate.accepts(key(60)), "the app's attack reaching the microphone")
+        time += 350.milliseconds
+        assertTrue(gate.accepts(key(60)), "a new stroke of the same note is the player's")
         gate.send(MidiMessage.noteOff(60))
         gate.send(MidiMessage.noteOn(64, 80))
         time += 100.milliseconds
-        assertFalse(gate.accepts(key(60)), "the released note still rings")
-        time += 150.milliseconds
-        assertTrue(gate.accepts(key(60)))
+        assertTrue(gate.accepts(key(60)), "the released note has no new attack")
         assertFalse(gate.accepts(key(64)))
     }
 

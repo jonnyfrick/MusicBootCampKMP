@@ -113,8 +113,8 @@
     <string name="system_default">Systemstandard</string>
     <string name="headphones">Ich verwende Kopfhörer</string>
     <string name="headphones_on_hint">Gespielte Töne werden jederzeit erkannt.</string>
-    <string name="headphones_off_hint_plain">Ohne Kopfhörer hört das Mikrofon die App mit: Während die App einen Ton spielt, werden dieser Ton und seine Oktaven ignoriert.</string>
-    <string name="headphones_off_hint">Ohne Kopfhörer hört das Mikrofon die App mit. Mit „%1$s“ als MIDI-Ausgang zieht die App ihren eigenen Klang ab, sodass jeder Ton zählt (sie braucht zu Beginn einer Übung ein paar Töne, um deinen Raum zu lernen; bis dahin werden der Ton der App und seine Oktaven ignoriert, solange er klingt).</string>
+    <string name="headphones_off_hint_plain">Ohne Kopfhörer hört das Mikrofon die App mit: Direkt nach dem Anschlag der App werden ihr Ton und seine Oktaven kurz ignoriert.</string>
+    <string name="headphones_off_hint">Ohne Kopfhörer hört das Mikrofon die App mit. Mit „%1$s“ als MIDI-Ausgang zieht die App ihren eigenen Klang ab, sodass jeder Ton zählt (sie braucht zu Beginn einer Übung ein paar Töne, um deinen Raum zu lernen; bis dahin werden der Ton der App und seine Oktaven direkt nach ihrem Anschlag kurz ignoriert).</string>
     <string name="octaves">Richtige Töne in anderer Oktave zählen</string>
     <string name="octaves_hint">Die Erkennung verwechselt Oktaven viel öfter als du (tiefe Klaviertöne haben schwache Grundtöne).</string>
     <string name="late_answers">Späte Antworten</string>

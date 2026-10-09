@@ -487,7 +487,9 @@ class AppController(
     private suspend fun finishRecording() {
         val recording = recorder ?: return
         recorder = null
-        runCatching { withContext(Dispatchers.Default) { recording.finish(recordingInfo) } }
+        // Before the ports close: how the output fared (dropouts, lost alignment with the microphone).
+        val diagnostics = (output as? RenderedOutputPort)?.diagnostics().orEmpty()
+        runCatching { withContext(Dispatchers.Default) { recording.finish(recordingInfo + diagnostics) } }
             .onSuccess {
                 message = text(Res.string.msg_recording_saved, recording.name)
                 if (tuning.optimizationMode) runSummary = RunSummary(recording.name, recording.summary())

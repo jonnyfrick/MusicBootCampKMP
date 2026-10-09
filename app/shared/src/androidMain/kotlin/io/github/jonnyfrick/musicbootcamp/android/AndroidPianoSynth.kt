@@ -3,7 +3,7 @@ package io.github.jonnyfrick.musicbootcamp.android
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
-import android.os.Build
+import android.os.Process
 import io.github.jonnyfrick.musicbootcamp.platform.BUILT_IN_PIANO
 import io.github.jonnyfrick.musicbootcamp.platform.Instruments
 import io.github.jonnyfrick.musicbootcamp.core.midi.MidiMessage
@@ -48,12 +48,15 @@ private class AndroidSynthPort(sampleRate: Int) : RenderedOutputPort {
                 BUFFER_FRAMES * 4,
             ),
         )
-        .apply { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY) }
+        // No low-latency mode: its buffer of a few milliseconds runs dry (audible as tearing)
+        // whenever the renderer has to wait for the processor, e.g. while a chord is analysed.
+        // A fifth of a second later for every note does not matter: the exercise's clock is the
+        // app's, and the delay to the microphone is measured anyway.
         .build()
         .apply { play() }
 
     @Volatile private var running = true
-    private val renderer = thread(name = "Piano renderer", isDaemon = true, priority = Thread.MAX_PRIORITY) { render() }
+    private val renderer = thread(name = "Piano renderer", isDaemon = true) { render() }
 
     override fun send(message: MidiMessage) = synchronized(lock) { synth.send(message) }
 
@@ -62,7 +65,13 @@ private class AndroidSynthPort(sampleRate: Int) : RenderedOutputPort {
         played.read(frames, track.playbackHeadPosition.toLong() and 0xFFFFFFFFL, LEAD_FRAMES, RESYNC_FRAMES)
     }
 
+    override fun diagnostics(): Map<String, String> = synchronized(lock) {
+        mapOf("outputUnderruns" to track.underrunCount.toString(), "referenceResyncs" to played.resyncs.toString())
+    }
+
     private fun render() {
+        // Ahead of everything but the system's own audio, so the analysis cannot starve the sound.
+        Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
         val block = FloatArray(BLOCK_FRAMES)
         try {
             while (running) {
@@ -88,7 +97,8 @@ private class AndroidSynthPort(sampleRate: Int) : RenderedOutputPort {
 
     private companion object {
         const val BLOCK_FRAMES = 256
-        const val BUFFER_FRAMES = 2048
+        /** ~190 ms at 44.1 kHz: room for the renderer to be late without a dropout. */
+        const val BUFFER_FRAMES = 8192
         const val LEAD_FRAMES = 1024
         const val RESYNC_FRAMES = 4096
     }

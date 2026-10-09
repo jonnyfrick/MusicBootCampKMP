@@ -11,7 +11,8 @@ import kotlin.time.TimeSource
  * For microphone input without headphones: the microphone also hears the notes the app
  * plays. This output wrapper tracks what is sounding; [isQuiet] is false while an app note
  * sounds and for [releaseTime] after it. [accepts] lets a detected note through unless it
- * could be the app's own sound.
+ * could be the app's own sound. A chord is the app's own only shortly after the app struck it
+ * ([acceptsChord]).
  *
  * Like [PracticeSession], use it from one thread: [PracticeRunner] sends the notes and
  * collects the input on the same confined dispatcher.
@@ -20,14 +21,23 @@ class OwnSoundGate(
     private val output: MidiOutput,
     private val releaseTime: Duration = 200.milliseconds,
     private val timeSource: TimeSource = TimeSource.Monotonic,
+    /**
+     * How long after the app struck a note a recognised chord of its notes can still be that
+     * attack: the way to the microphone (up to 350 ms) plus the chord analysis (about 400 ms).
+     */
+    private val attackTime: Duration = 900.milliseconds,
 ) : MidiOutput {
     private val sounding = mutableSetOf<Int>()
+    private val struck = mutableMapOf<Int, TimeMark>()
     private val released = mutableMapOf<Int, TimeMark>()
     private var lastSilence = timeSource.markNow() - releaseTime
 
     override fun send(message: MidiMessage) {
         when {
-            message.isNoteOn -> sounding += message.data1
+            message.isNoteOn -> {
+                sounding += message.data1
+                struck[message.data1] = timeSource.markNow()
+            }
             message.command == MidiMessage.NOTE_OFF || message.command == MidiMessage.NOTE_ON -> {
                 if (sounding.remove(message.data1)) {
                     released[message.data1] = timeSource.markNow()
@@ -45,8 +55,17 @@ class OwnSoundGate(
 
     fun isQuiet(): Boolean = sounding.isEmpty() && lastSilence.elapsedNow() >= releaseTime
 
-    /** For a chord: ignored only if every one of its notes could be the app's own. */
-    fun acceptsChord(notes: List<Int>): Boolean = notes.any { accepts(MidiMessage.noteOn(it, 100)) }
+    /**
+     * For a recognised chord: ignored only if every one of its notes (in any octave) is one the
+     * app struck within [attackTime]. The chord recognition only looks at what a stroke adds to
+     * the sound before it, and the app's note has a single attack; so a chord recognised later,
+     * while the app's notes still sound, is the player's, also if it is the very same notes (the
+     * answer to the first step, before the app's sound can be removed, is exactly that).
+     */
+    fun acceptsChord(notes: List<Int>): Boolean {
+        struck.entries.removeAll { it.value.elapsedNow() >= attackTime }
+        return notes.any { note -> struck.keys.none { (note - it) % 12 == 0 } }
+    }
 
     /**
      * Whether a detected note-on can be the player's: always when [isQuiet], otherwise only if

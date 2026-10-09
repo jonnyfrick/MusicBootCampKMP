@@ -346,6 +346,22 @@ several voices).
   messages skipped). Devices open on a MIDI thread of their own.
 - **Import of Java setups:** the system's file dialog only gives access to picked files, so the
   settings XML and its `learned_sequences_…` XML are picked together (`AndroidLegacyFilePicker`).
+- **Found with the first recordings from a phone** (two voices, phone on the piano):
+  - The output tore audibly: the low-latency `AudioTrack` has a buffer of a few milliseconds, which
+    ran dry whenever the renderer waited for the processor (chord analysis). Now a normal track
+    with ~190 ms of buffer and a renderer thread at audio priority.
+  - Now and then the app's own chord was taken for the answer: when the microphone reader was
+    held up, its blocks arrived in a burst, and `PlayedAudioBuffer` (aligning the reference by the
+    play head at the time of reading) jumped ahead and back, so the echo cancellation was off for
+    that step. It now only resyncs when it has been out of step for a second (samples really
+    lost); the Android reader queues blocks without limit, has a second of system buffer and
+    audio priority, so it is not held up by the analysis. Test: `PlayedAudioBufferTest`.
+  - The answer to the first step was ignored while the app's note sounded (three seconds at that
+    tempo): before the app's sound can be removed, `OwnSoundGate` dropped every chord of the
+    app's notes. A chord is now the app's own only within 0.9 s of the app's attack
+    (`acceptsChord`): the recognition only sees what a stroke adds, and the app's note has one
+    attack. Single notes keep the old rule.
+  - Recordings now log `outputUnderruns` and `referenceResyncs` (`RenderedOutputPort.diagnostics`).
 - **Storage:** setups in the app's private files; recordings in
   `Android/data/io.github.jonnyfrick.musicbootcamp/files/recordings`, reachable over USB.
 - **Lifecycle:** rotating or resizing keeps the activity (`configChanges`), so an exercise keeps

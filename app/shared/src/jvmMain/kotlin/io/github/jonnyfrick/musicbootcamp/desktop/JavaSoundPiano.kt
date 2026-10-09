@@ -40,6 +40,8 @@ private class JavaSoundPianoPort(sampleRate: Int) : RenderedOutputPort {
         played.read(frames, line.longFramePosition, LEAD_FRAMES, RESYNC_FRAMES)
     }
 
+    override fun diagnostics(): Map<String, String> = synchronized(this) { mapOf("referenceResyncs" to played.resyncs.toString()) }
+
     private fun render() {
         val block = FloatArray(BLOCK_FRAMES)
         val bytes = ByteArray(BLOCK_FRAMES * 2)

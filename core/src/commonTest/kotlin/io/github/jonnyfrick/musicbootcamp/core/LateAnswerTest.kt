@@ -291,6 +291,22 @@ class LateAnswerTest {
         assertFalse(gate.accepts(key(64)))
     }
 
+    @Test
+    fun ownSoundGateTakesAChordForTheAppsOnlyRightAfterItsAttack() {
+        // Found live on a phone: the answer to the first step (the same notes the app still sounds,
+        // before its sound can be removed) was ignored for the whole length of the app's note.
+        val time = TestTimeSource()
+        val gate = OwnSoundGate({ }, timeSource = time)
+        gate.send(MidiMessage.noteOn(60, 80))
+        gate.send(MidiMessage.noteOn(64, 80))
+        time += 500.milliseconds
+        assertFalse(gate.acceptsChord(listOf(60, 64)), "the app's attack, as the microphone hears it")
+        assertFalse(gate.acceptsChord(listOf(60, 76)), "also with an octave error")
+        assertTrue(gate.acceptsChord(listOf(60, 65)), "another chord is the player's")
+        time += 1000.milliseconds
+        assertTrue(gate.acceptsChord(listOf(60, 64)), "a later stroke is the player's, though the app's notes still sound")
+    }
+
     /** With a tolerance on a MIDI keyboard, chords arrive key by key, not as recognised chords. */
     private fun duoSession() = PracticeSession(
         PracticeSettings(mode = PracticeMode.TWO_VOICES_PURE_RANDOM, lowLimit = 48, highLimit = 72, startPosition = 60),

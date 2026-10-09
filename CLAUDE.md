@@ -52,6 +52,7 @@ than the given notes. To look at such runs:
 
 ```bash
 tools/analyse_recordings.py android            # fetches new recordings from the phone (USB debugging) and replays the newest
+tools/analyse_recordings.py android-web        # the web app used in the phone's browser (its Download folder)
 tools/analyse_recordings.py desktop            # the desktop app's test data
 tools/analyse_recordings.py ~/Downloads        # recordings downloaded from the web app
 ```

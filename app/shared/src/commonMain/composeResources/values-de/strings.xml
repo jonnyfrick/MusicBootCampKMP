@@ -125,7 +125,7 @@
     <string name="midi_in">MIDI-Eingang (dein Keyboard)</string>
     <string name="midi_out">MIDI-Ausgang (Klang)</string>
     <string name="bluetooth_midi">Bluetooth-MIDI verbinden …</string>
-    <string name="devices_hint">Ein angestecktes Keyboard wird sofort als MIDI-Eingang gewählt. Die Geräte werden beim Drücken von Start geöffnet.</string>
+    <string name="devices_hint">Ein angestecktes Keyboard wird sofort zur Eingabe. Die Geräte werden beim Drücken von Start geöffnet.</string>
     <string name="piano_credits">„%1$s“ spielt Samples des Salamander Grand Piano von Alexander Holm (CC BY 3.0).</string>
     <string name="own_synth_hint">„%1$s“ spielt die App selbst, daher kann sie ihren Klang aus dem Mikrofonsignal entfernen.</string>
     <string name="test_midi">MIDI testen</string>

@@ -75,7 +75,8 @@ data class AppPreferences(
     /** Show the given notes while practising; off by default because the point is to hear them. */
     val showGivenNotes: Boolean = false,
     /** Where the played notes come from. */
-    val inputSource: InputSource = InputSource.MIDI,
+    /** The microphone by default: most players sit at an acoustic piano, and it needs no device. */
+    val inputSource: InputSource = InputSource.MICROPHONE,
     /** Microphone for [InputSource.MICROPHONE]; null = system default. */
     val audioInputDevice: String? = null,
     /** With headphones the microphone cannot hear the app, so input is accepted at any time. */

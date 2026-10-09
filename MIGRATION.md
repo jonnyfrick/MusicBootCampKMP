@@ -468,6 +468,9 @@ The import is one-way: practice done in the new app does not flow back into the 
   5. Turn learning on, make mistakes on purpose, press Stop: "Stored" goes up, and the Memory screen count rises.
   6. Change Kammerton A while an exercise runs: the pitch shifts immediately.
   7. Close the app while an exercise is running, reopen it: the learned sequences are still there.
+- **Developer tools on the web are on for everyone, temporarily** (`debugTools = true` in
+  `WebServices.kt`), to tune the recognition in browsers; recordings come as downloads there
+  (`DownloadRecordingStore`). Set it back to false when that is done.
 - **Piano calibration for users?** It is a debug-only tool for now because the harmonic chord
   recognition does well without it. If recognition turns out weaker on other pianos, rooms or
   phones, calibration could help and would then move out of the developer tools (into

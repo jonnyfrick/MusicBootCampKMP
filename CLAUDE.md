@@ -44,6 +44,24 @@ duplicate them here.
 - Hardware (MIDI keyboard, microphone, sound) cannot be tested in the cloud or by automated tests.
   Say so, and give the user concrete steps to check the change at the instrument.
 
+## Analysing recordings of the user's playing
+
+The user tests the recognition at the piano (debug builds: Settings → Recognition → optimization
+mode or "Record exercises") and then reports the step numbers where they played something other
+than the given notes. To look at such runs:
+
+```bash
+tools/analyse_recordings.py android            # fetches new recordings from the phone (USB debugging) and replays the newest
+tools/analyse_recordings.py desktop            # the desktop app's test data
+tools/analyse_recordings.py ~/Downloads        # recordings downloaded from the web app
+```
+
+`--list` shows what is there, `--last N` / `--all` choose, `--played 4=62,9=-` says what was really
+played, `-P name=value` passes replay options (`parameters`, `sweep`, …; see `RecordingReplayTest`).
+Analyse the newest run unless told otherwise. The step table is printed; `hops.csv` and
+`spectrogram.png` are in `core/build/analysis/<name>/`. Recordings are personal data: they stay
+under `build/` and are never committed.
+
 ## Before committing
 
 ```bash

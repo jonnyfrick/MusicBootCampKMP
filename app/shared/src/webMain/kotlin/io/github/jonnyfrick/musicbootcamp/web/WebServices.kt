@@ -1,5 +1,6 @@
 package io.github.jonnyfrick.musicbootcamp.web
 
+import io.github.jonnyfrick.musicbootcamp.core.audio.RecordingFile
 import io.github.jonnyfrick.musicbootcamp.core.midi.MidiMessage
 import io.github.jonnyfrick.musicbootcamp.core.persistence.DocumentStore
 import io.github.jonnyfrick.musicbootcamp.platform.AudioInputBackend
@@ -11,6 +12,7 @@ import io.github.jonnyfrick.musicbootcamp.platform.MidiInputPort
 import io.github.jonnyfrick.musicbootcamp.platform.MidiOutputPort
 import io.github.jonnyfrick.musicbootcamp.platform.PlatformServices
 import io.github.jonnyfrick.musicbootcamp.platform.PlayedAudioBuffer
+import io.github.jonnyfrick.musicbootcamp.platform.RecordingStore
 import io.github.jonnyfrick.musicbootcamp.platform.RenderedOutputPort
 import io.github.jonnyfrick.musicbootcamp.platform.RenderedSynth
 import io.github.jonnyfrick.musicbootcamp.platform.SynthMidiBackend
@@ -39,6 +41,11 @@ fun webServices(): PlatformServices {
         documents = LocalStorageDocumentStore(),
         legacyFiles = null,
         audio = WebAudioInput(),
+        recordings = DownloadRecordingStore(),
+        // TEMPORARY: the developer tools (Settings → Recognition: recording, optimization mode,
+        // detection parameters) are on for everyone on the web, to tune the recognition in
+        // browsers. Set back to false when that is done (see MIGRATION.md, "Open points").
+        debugTools = true,
         renderedSynths = listOf(piano),
     )
 }
@@ -176,9 +183,71 @@ private class WebAudioPort : AudioInputPort {
     }
 }
 
+/**
+ * Recordings in the browser: kept in memory while the exercise runs and handed to the user as
+ * downloads when it ends (`session-<date>_<time>.wav` and `.json`), since a page cannot write
+ * into a folder by itself.
+ */
+private class DownloadRecordingStore : RecordingStore {
+    override val location: String = "Downloads"
+
+    override fun create(): RecordingFile = object : RecordingFile {
+        private val id = recordingCreate()
+        override val name: String = recordingName()
+
+        override fun append(bytes: ByteArray) = recordingAppend(id, bytes.size) { index -> bytes[index].toInt() and 0xFF }
+
+        override fun finish(wavHeader: ByteArray, log: String) =
+            recordingFinish(id, name, wavHeader.size, { index -> wavHeader[index].toInt() and 0xFF }, log)
+    }
+}
+
 // ----------------------------------------------------------------------------- JavaScript side
 
-private fun initState(): Unit = js("{ globalThis.__mbc = globalThis.__mbc || { synths: {}, nextId: 0, listeners: {} }; }")
+private fun initState(): Unit = js("{ globalThis.__mbc = globalThis.__mbc || { synths: {}, nextId: 0, listeners: {}, recordings: {} }; }")
+
+/** `session-<date>_<time>` in local time, as the other platforms name their recordings. */
+private fun recordingName(): String = js(
+    """(function () {
+        var d = new Date();
+        function two(n) { return (n < 10 ? '0' : '') + n; }
+        return 'session-' + d.getFullYear() + '-' + two(d.getMonth() + 1) + '-' + two(d.getDate()) +
+            '_' + two(d.getHours()) + '-' + two(d.getMinutes()) + '-' + two(d.getSeconds());
+    })()""",
+)
+
+private fun recordingCreate(): Int = js("(function () { var s = globalThis.__mbc; var id = ++s.nextId; s.recordings[id] = []; return id; })()")
+
+/** Keeps [size] more bytes of recording [id], read one by one through [byteAt]. */
+private fun recordingAppend(id: Int, size: Int, byteAt: (Int) -> Int): Unit = js(
+    """{
+        var chunk = new Uint8Array(size);
+        for (var i = 0; i < size; i++) chunk[i] = byteAt(i);
+        globalThis.__mbc.recordings[id].push(chunk);
+    }""",
+)
+
+/** Offers recording [id] as two downloads: the WAV (header first) and the log. */
+private fun recordingFinish(id: Int, name: String, headerSize: Int, headerAt: (Int) -> Int, log: String): Unit = js(
+    """{
+        var s = globalThis.__mbc;
+        var header = new Uint8Array(headerSize);
+        for (var i = 0; i < headerSize; i++) header[i] = headerAt(i);
+        function save(blob, fileName) {
+            var link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            setTimeout(function () { URL.revokeObjectURL(link.href); }, 60000);
+        }
+        save(new Blob([header].concat(s.recordings[id]), { type: 'audio/wav' }), name + '.wav');
+        delete s.recordings[id];
+        // A moment later: browsers hold back two downloads started at the very same time.
+        setTimeout(function () { save(new Blob([log], { type: 'application/json' }), name + '.json'); }, 500);
+    }""",
+)
 
 private fun storageGet(key: String): String? = js("window.localStorage.getItem(key)")
 

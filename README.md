@@ -65,6 +65,9 @@ them:
 ./gradlew :core:jvmTest --tests '*RecordingReplayTest*' --rerun -Pmusicbootcamp.recordings=<folder or .wav>
 ```
 
+`tools/analyse_recordings.py android` (or `desktop`, or a folder such as `~/Downloads` for recordings of the web
+app) fetches the recordings and runs this for the newest one.
+
 This writes a step table, a CSV of every analysis hop and a spectrogram PNG per recording to
 `core/build/analysis/<name>/`. Optional: `-Pmusicbootcamp.played=4=62,9=-` (what you played
 where it was not the given note, `-` = nothing), `-Pmusicbootcamp.parameters={"rawRise":1.3}`

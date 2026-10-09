@@ -113,8 +113,8 @@
     <string name="system_default">System default</string>
     <string name="headphones">I use headphones</string>
     <string name="headphones_on_hint">Notes you play are recognised at any time.</string>
-    <string name="headphones_off_hint_plain">Without headphones the microphone hears the app too: while the app plays a note, that note and its octaves are ignored.</string>
-    <string name="headphones_off_hint">Without headphones the microphone hears the app too. With “%1$s” as MIDI Out the app removes its own sound, so every note counts (it needs a few notes at the start of an exercise to learn your room; until then the note the app is playing and its octaves are ignored while it sounds).</string>
+    <string name="headphones_off_hint_plain">Without headphones the microphone hears the app too: right after the app strikes a note, that note and its octaves are ignored for a moment.</string>
+    <string name="headphones_off_hint">Without headphones the microphone hears the app too. With “%1$s” as MIDI Out the app removes its own sound, so every note counts (it needs a few notes at the start of an exercise to learn your room; until then the app’s note and its octaves are ignored for a moment right after the app strikes it).</string>
     <string name="octaves">Right notes in another octave count</string>
     <string name="octaves_hint">The recognition mistakes octaves far more often than you do (a piano’s low notes have weak fundamentals).</string>
     <string name="late_answers">Late answers</string>

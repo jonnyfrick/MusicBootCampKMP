@@ -346,6 +346,23 @@ several voices).
   messages skipped). Devices open on a MIDI thread of their own.
 - **Import of Java setups:** the system's file dialog only gives access to picked files, so the
   settings XML and its `learned_sequences_…` XML are picked together (`AndroidLegacyFilePicker`).
+- **Found with the first recordings from a phone** (two voices, phone on the piano):
+  - The output tore audibly: the low-latency `AudioTrack` has a buffer of a few milliseconds, which
+    ran dry whenever the renderer waited for the processor (chord analysis). Now a normal track
+    with ~190 ms of buffer and a renderer thread at audio priority.
+  - Now and then the app's own chord was taken for the answer: when the microphone reader was
+    held up, its blocks arrived in a burst, and `PlayedAudioBuffer` (aligning the reference by the
+    play head at the time of reading) jumped ahead and back, so the echo cancellation was off for
+    that step. It now only resyncs when it has been out of step for a second (samples really
+    lost); the Android reader queues blocks without limit, has a second of system buffer and
+    audio priority, so it is not held up by the analysis. Test: `PlayedAudioBufferTest`.
+  - The answer to the first step was ignored while the app's note sounded (three seconds at that
+    tempo; at 1 s per step with single notes the same happened to answers 0.55 s after the note):
+    before the app's sound can be removed, `OwnSoundGate` dropped everything matching the app's
+    notes while they sounded. A note is now the app's own only within 0.45 s of the app's attack,
+    a chord within 0.9 s: the recognition only sees what a stroke adds, and the app's note has
+    one attack.
+  - Recordings now log `outputUnderruns` and `referenceResyncs` (`RenderedOutputPort.diagnostics`).
 - **Storage:** setups in the app's private files; recordings in
   `Android/data/io.github.jonnyfrick.musicbootcamp/files/recordings`, reachable over USB.
 - **Lifecycle:** rotating or resizing keeps the activity (`configChanges`), so an exercise keeps
@@ -397,6 +414,11 @@ can be removed from the microphone signal. So the app has its own instrument, th
   still work), `getUserMedia` without echo cancellation, noise suppression and gain control, the
   app's piano through the Web Audio API (also a `RenderedSynth`), setups in local storage. The
   browser side is a few small JavaScript functions exchanging only numbers, strings and callbacks.
+  Sound goes through two audio worklets on the browser's audio thread: the piano is rendered on
+  the main thread a quarter of a second ahead and queued in "mbc-player", and "mbc-recorder" posts
+  the microphone's blocks, which wait in the message queue while the main thread is busy. (At
+  first both used `ScriptProcessorNode` on the main thread; with the recognition running there
+  too, the sound tore audibly whenever a chord was analysed.)
 
 ### Developer tools only in debug builds
 
@@ -477,8 +499,9 @@ The import is one-way: practice done in the new app does not flow back into the 
   Settings → Input, with a simpler flow).
 - **Untested platform code:** iOS (never run: this Mac cannot build for an iPhone), Bluetooth MIDI
   on Android and iOS, and microphone and MIDI in the browser need a first test with real devices.
-- **Web audio on the main thread:** the web app captures and renders with `ScriptProcessorNode`
-  and analyses on the browser's main thread. If that stutters, move both into an `AudioWorklet`.
+- **Web: the recognition runs on the main thread.** Playing and recording are on the audio
+  thread now, so they no longer tear; the analysis still shares the main thread with the UI. If
+  the UI stutters while chords are analysed, move the analysis into a Web Worker.
 - **iOS:** no recording store yet (so no optimization mode), no import of Java setups, and the
   microphone tap delivers blocks of about 100 ms, which delays recognition accordingly.
 - **Two-voice sequence order** (see above): decide whether to reverse it. If you do, convert existing memories

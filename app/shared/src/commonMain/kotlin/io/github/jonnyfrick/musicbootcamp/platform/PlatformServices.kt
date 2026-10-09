@@ -104,6 +104,9 @@ interface RenderedOutputPort : MidiOutputPort {
      * same number of microphone samples, so both stay roughly in step.
      */
     fun playedAudio(frames: Int): FloatArray
+
+    /** Counts of what went wrong while playing (dropouts, lost alignment), for a recording's log. */
+    fun diagnostics(): Map<String, String> = emptyMap()
 }
 
 /** A software synthesizer the app can render itself (desktop: Java's Gervill). */

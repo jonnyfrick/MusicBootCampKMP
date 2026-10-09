@@ -55,6 +55,8 @@ private class GervillPort(sampleRate: Int) : RenderedOutputPort {
         played.read(frames, line.longFramePosition, LEAD_FRAMES, RESYNC_FRAMES)
     }
 
+    override fun diagnostics(): Map<String, String> = synchronized(this) { mapOf("referenceResyncs" to played.resyncs.toString()) }
+
     private fun render() {
         val bytes = ByteArray(BLOCK_FRAMES * 2)
         try {

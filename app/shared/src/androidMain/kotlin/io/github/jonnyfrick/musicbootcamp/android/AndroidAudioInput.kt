@@ -12,7 +12,10 @@ import android.media.MediaRecorder
 import io.github.jonnyfrick.musicbootcamp.core.pitch.AudioBlock
 import io.github.jonnyfrick.musicbootcamp.platform.AudioInputBackend
 import io.github.jonnyfrick.musicbootcamp.platform.AudioInputPort
+import android.os.Process
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -68,7 +71,8 @@ class AndroidAudioInput(
         val record = AudioRecord.Builder()
             .setAudioSource(if (unprocessed) MediaRecorder.AudioSource.UNPROCESSED else MediaRecorder.AudioSource.VOICE_RECOGNITION)
             .setAudioFormat(format)
-            .setBufferSizeInBytes(maxOf(minimum, BLOCK_FRAMES * 4 * 8))
+            // A second of room: the reader may be late now and then without losing samples.
+            .setBufferSizeInBytes(maxOf(minimum, SAMPLE_RATE * 4))
             .build()
         if (record.state != AudioRecord.STATE_INITIALIZED) {
             record.release()
@@ -86,8 +90,14 @@ class AndroidAudioInput(
         override fun blocksWith(reference: (frames: Int) -> FloatArray): Flow<AudioBlock> =
             read { samples -> AudioBlock(samples, reference(samples.size)) }
 
-        /** Reads blocks on an IO thread; [convert] runs right after each read, on that thread. */
+        /**
+         * Reads blocks on an IO thread; [convert] runs right after each read, on that thread.
+         * The blocks queue up without limit behind it: the reader never waits for the analysis
+         * (which is slower than real time for a moment after each chord), or the system's buffer
+         * would overflow and samples be lost, and with them the alignment with what the app plays.
+         */
         private fun <T> read(convert: (FloatArray) -> T): Flow<T> = flow {
+            Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO)
             val buffer = FloatArray(BLOCK_FRAMES)
             record.startRecording()
             try {
@@ -99,7 +109,7 @@ class AndroidAudioInput(
             } finally {
                 runCatching { record.stop() }
             }
-        }.flowOn(Dispatchers.IO)
+        }.buffer(Channel.UNLIMITED).flowOn(Dispatchers.IO)
 
         override fun close() {
             runCatching { record.stop() }

@@ -414,6 +414,11 @@ can be removed from the microphone signal. So the app has its own instrument, th
   still work), `getUserMedia` without echo cancellation, noise suppression and gain control, the
   app's piano through the Web Audio API (also a `RenderedSynth`), setups in local storage. The
   browser side is a few small JavaScript functions exchanging only numbers, strings and callbacks.
+  Sound goes through two audio worklets on the browser's audio thread: the piano is rendered on
+  the main thread a quarter of a second ahead and queued in "mbc-player", and "mbc-recorder" posts
+  the microphone's blocks, which wait in the message queue while the main thread is busy. (At
+  first both used `ScriptProcessorNode` on the main thread; with the recognition running there
+  too, the sound tore audibly whenever a chord was analysed.)
 
 ### Developer tools only in debug builds
 
@@ -494,8 +499,9 @@ The import is one-way: practice done in the new app does not flow back into the 
   Settings → Input, with a simpler flow).
 - **Untested platform code:** iOS (never run: this Mac cannot build for an iPhone), Bluetooth MIDI
   on Android and iOS, and microphone and MIDI in the browser need a first test with real devices.
-- **Web audio on the main thread:** the web app captures and renders with `ScriptProcessorNode`
-  and analyses on the browser's main thread. If that stutters, move both into an `AudioWorklet`.
+- **Web: the recognition runs on the main thread.** Playing and recording are on the audio
+  thread now, so they no longer tear; the analysis still shares the main thread with the UI. If
+  the UI stutters while chords are analysed, move the analysis into a Web Worker.
 - **iOS:** no recording store yet (so no optimization mode), no import of Java setups, and the
   microphone tap delivers blocks of about 100 ms, which delays recognition accordingly.
 - **Two-voice sequence order** (see above): decide whether to reverse it. If you do, convert existing memories

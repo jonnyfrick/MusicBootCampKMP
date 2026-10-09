@@ -74,32 +74,40 @@ private class WebPianoSynth : RenderedSynth {
     override fun open(sampleRate: Int): RenderedOutputPort = WebSynthPort()
 }
 
+/**
+ * The piano is rendered here, on the browser's main thread, but played by an audio worklet on the
+ * browser's audio thread, which is fed [AHEAD_SECONDS] in advance: the main thread also runs the
+ * recognition, and whenever that kept it busy, sound rendered just in time tore audibly.
+ */
 private class WebSynthPort : RenderedOutputPort {
-    private val synth = Instruments.piano(audioSampleRate())
+    private val sampleRate = audioSampleRate()
+    private val synth = Instruments.piano(sampleRate)
     private val played = PlayedAudioBuffer()
-    private var block = FloatArray(BLOCK_FRAMES)
-    private var rendered = 0L
+    private var block = FloatArray(CHUNK_FRAMES)
 
-    // The browser asks for each block on its main thread, where all of this runs: no locking.
-    private val node = synthStart(
-        render = { frames ->
-            if (block.size != frames) block = FloatArray(frames)
+    private val player = playerStart(
+        ahead = (AHEAD_SECONDS * sampleRate).toInt(),
+        chunk = CHUNK_FRAMES,
+        render = {
             synth.render(block)
             played.append(block)
-            rendered += frames
         },
         sample = { index -> block[index] },
     )
 
     override fun send(message: MidiMessage) = synth.send(message)
 
-    // The block just rendered is on its way to the loudspeaker; the microphone hears it later.
-    override fun playedAudio(frames: Int): FloatArray = played.read(frames, rendered - block.size, LEAD_FRAMES, RESYNC_FRAMES)
+    // The worklet reports how many frames it has handed to the loudspeaker.
+    override fun playedAudio(frames: Int): FloatArray = played.read(frames, playerPosition(player).toLong(), LEAD_FRAMES, RESYNC_FRAMES)
 
-    override fun close() = synthStop(node)
+    override fun diagnostics(): Map<String, String> =
+        mapOf("outputUnderruns" to playerUnderruns(player).toString(), "referenceResyncs" to played.resyncs.toString())
+
+    override fun close() = playerStop(player)
 
     private companion object {
-        const val BLOCK_FRAMES = 1024
+        const val CHUNK_FRAMES = 512
+        const val AHEAD_SECONDS = 0.25
         const val LEAD_FRAMES = 1024
         const val RESYNC_FRAMES = 8192
     }
@@ -258,38 +266,103 @@ private fun storageRemove(key: String): Unit = js("{ window.localStorage.removeI
 private fun storageKeys(prefix: String): String =
     js("Object.keys(window.localStorage).filter(function (k) { return k.startsWith(prefix); }).join('\\n')")
 
-/** The shared audio context's sample rate; creates the context and wakes it (browsers start it only after a click). */
+/**
+ * The shared audio context's sample rate; creates the context with the app's two worklets and
+ * wakes it (browsers start it only after a click). The worklets run on the browser's audio
+ * thread and only move samples: "mbc-player" plays the chunks it is sent, "mbc-recorder" sends
+ * what the microphone hears, both through message ports, which queue while the main thread is busy.
+ */
 private fun audioSampleRate(): Int = js(
     """(function () {
         var s = globalThis.__mbc;
-        if (!s.context) s.context = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+        if (!s.context) {
+            s.context = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+            var code =
+                "class Player extends AudioWorkletProcessor {" +
+                "  constructor() { super(); this.queue = []; this.offset = 0; this.played = 0; this.underruns = 0; this.calls = 0; this.started = false;" +
+                "    this.port.onmessage = (e) => { this.queue.push(e.data); }; }" +
+                "  process(inputs, outputs) {" +
+                "    var out = outputs[0][0]; var i = 0;" +
+                "    while (i < out.length && this.queue.length) {" +
+                "      var chunk = this.queue[0]; var n = Math.min(out.length - i, chunk.length - this.offset);" +
+                "      out.set(chunk.subarray(this.offset, this.offset + n), i); i += n; this.offset += n;" +
+                "      if (this.offset >= chunk.length) { this.queue.shift(); this.offset = 0; }" +
+                "    }" +
+                "    if (i > 0) this.started = true;" +
+                "    if (i < out.length && this.started) this.underruns++;" +
+                "    this.played += i;" +
+                "    if (++this.calls % 4 === 0) this.port.postMessage({ played: this.played, underruns: this.underruns });" +
+                "    return true;" +
+                "  }" +
+                "}" +
+                "registerProcessor('mbc-player', Player);" +
+                "class Recorder extends AudioWorkletProcessor {" +
+                "  constructor() { super(); this.block = new Float32Array(1024); this.filled = 0; }" +
+                "  process(inputs) {" +
+                "    var input = inputs[0][0];" +
+                "    if (input) for (var i = 0; i < input.length; i++) {" +
+                "      this.block[this.filled++] = input[i];" +
+                "      if (this.filled === this.block.length) { this.port.postMessage(this.block); this.block = new Float32Array(1024); this.filled = 0; }" +
+                "    }" +
+                "    return true;" +
+                "  }" +
+                "}" +
+                "registerProcessor('mbc-recorder', Recorder);";
+            s.worklets = s.context.audioWorklet.addModule(URL.createObjectURL(new Blob([code], { type: 'application/javascript' })));
+        }
         if (s.context.state === 'suspended') s.context.resume();
         return Math.round(s.context.sampleRate);
     })()""",
 )
 
-/** Starts a node that asks [render] for each block and reads it sample by sample; returns its id. */
-private fun synthStart(render: (Int) -> Unit, sample: (Int) -> Float): Int = js(
+/**
+ * Starts a player: keeps [ahead] frames queued in the worklet, asking [render] for each [chunk]
+ * and reading it sample by sample. Returns its id.
+ */
+private fun playerStart(ahead: Int, chunk: Int, render: () -> Unit, sample: (Int) -> Float): Int = js(
     """(function () {
         var s = globalThis.__mbc;
-        var node = s.context.createScriptProcessor(1024, 1, 1);
-        node.onaudioprocess = function (e) {
-            var out = e.outputBuffer.getChannelData(0);
-            render(out.length);
-            for (var i = 0; i < out.length; i++) out[i] = sample(i);
-        };
-        node.connect(s.context.destination);
         var id = ++s.nextId;
-        s.synths[id] = node;
+        var player = { node: null, sent: 0, played: 0, underruns: 0, timer: 0, stopped: false };
+        s.synths[id] = player;
+        function pump() {
+            if (!player.node) return;
+            while (player.sent - player.played < ahead) {
+                render();
+                var data = new Float32Array(chunk);
+                for (var i = 0; i < chunk; i++) data[i] = sample(i);
+                player.node.port.postMessage(data, [data.buffer]);
+                player.sent += chunk;
+            }
+        }
+        s.worklets.then(function () {
+            if (player.stopped) return;
+            player.node = new AudioWorkletNode(s.context, 'mbc-player', { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [1] });
+            player.node.port.onmessage = function (e) { player.played = e.data.played; player.underruns = e.data.underruns; pump(); };
+            player.node.connect(s.context.destination);
+            pump();
+        });
+        // Also on a timer: the worklet's reports stop coming while the audio context is suspended.
+        player.timer = setInterval(pump, 20);
         return id;
     })()""",
 )
 
-private fun synthStop(id: Int): Unit = js(
+/** The number of frames player [id] has handed to the loudspeaker. */
+private fun playerPosition(id: Int): Double = js("(function () { var p = globalThis.__mbc.synths[id]; return p ? p.played : 0; })()")
+
+private fun playerUnderruns(id: Int): Int = js("(function () { var p = globalThis.__mbc.synths[id]; return p ? p.underruns : 0; })()")
+
+private fun playerStop(id: Int): Unit = js(
     """{
         var s = globalThis.__mbc;
-        var node = s.synths[id];
-        if (node) { node.onaudioprocess = null; node.disconnect(); delete s.synths[id]; }
+        var player = s.synths[id];
+        if (player) {
+            player.stopped = true;
+            clearInterval(player.timer);
+            if (player.node) { player.node.port.onmessage = null; player.node.disconnect(); }
+            delete s.synths[id];
+        }
     }""",
 )
 
@@ -366,28 +439,32 @@ private fun microphoneRequest(done: (Boolean) -> Unit): Unit = js(
 private fun microphoneStart(begin: (Int) -> Unit, put: (Int, Float) -> Unit, end: () -> Unit): Unit = js(
     """{
         var s = globalThis.__mbc;
-        var source = s.context.createMediaStreamSource(s.stream);
-        var node = s.context.createScriptProcessor(1024, 1, 1);
-        node.onaudioprocess = function (e) {
-            var data = e.inputBuffer.getChannelData(0);
-            begin(data.length);
-            for (var i = 0; i < data.length; i++) put(i, data[i]);
-            end();
-        };
-        // A processor only runs while it leads to the output; a silent gain keeps the microphone off the loudspeaker.
-        var mute = s.context.createGain();
-        mute.gain.value = 0;
-        source.connect(node);
-        node.connect(mute);
-        mute.connect(s.context.destination);
-        s.microphone = { source: source, node: node, mute: mute };
+        var microphone = { stopped: false };
+        s.microphone = microphone;
+        s.worklets.then(function () {
+            if (microphone.stopped) return;
+            microphone.source = s.context.createMediaStreamSource(s.stream);
+            microphone.node = new AudioWorkletNode(s.context, 'mbc-recorder', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] });
+            microphone.node.port.onmessage = function (e) {
+                var data = e.data;
+                begin(data.length);
+                for (var i = 0; i < data.length; i++) put(i, data[i]);
+                end();
+            };
+            // A node only runs while it leads to the output; it writes nothing there, so the microphone stays off the loudspeaker.
+            microphone.source.connect(microphone.node);
+            microphone.node.connect(s.context.destination);
+        });
     }""",
 )
 
 private fun microphoneStop(): Unit = js(
     """{
         var m = globalThis.__mbc.microphone;
-        if (m) { m.node.onaudioprocess = null; m.source.disconnect(); m.node.disconnect(); m.mute.disconnect(); }
+        if (m) {
+            m.stopped = true;
+            if (m.node) { m.node.port.onmessage = null; m.source.disconnect(); m.node.disconnect(); }
+        }
         globalThis.__mbc.microphone = null;
     }""",
 )

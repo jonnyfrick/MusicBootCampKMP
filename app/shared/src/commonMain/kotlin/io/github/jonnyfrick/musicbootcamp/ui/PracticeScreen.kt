@@ -58,7 +58,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import io.github.jonnyfrick.musicbootcamp.core.midi.NoteNames
 import io.github.jonnyfrick.musicbootcamp.core.practice.PracticeStatus
 import io.github.jonnyfrick.musicbootcamp.core.practice.StepVerdict
 import io.github.jonnyfrick.musicbootcamp.resources.*
@@ -163,8 +162,8 @@ private fun PracticeContent(controller: AppController, onCustomize: (() -> Unit)
         val summary = stringResource(
             Res.string.practice_summary,
             modeLabel(settings.mode),
-            NoteNames.displayName(settings.lowLimit),
-            NoteNames.displayName(settings.highLimit),
+            controller.noteName(settings.lowLimit),
+            controller.noteName(settings.highLimit),
             settings.breathingTime.toString(),
         )
         if (onCustomize != null) {
@@ -194,7 +193,7 @@ private fun PracticeContent(controller: AppController, onCustomize: (() -> Unit)
                     when {
                         status.given.isEmpty() -> "–"
                         !controller.preferences.showGivenNotes -> "♪ ?"
-                        else -> status.given.distinct().joinToString("  ") { NoteNames.displayName(it) }
+                        else -> status.given.distinct().joinToString("  ") { controller.noteName(it) }
                     },
                     style = MaterialTheme.typography.displayLarge,
                     fontWeight = FontWeight.SemiBold,
@@ -225,7 +224,7 @@ private fun PracticeContent(controller: AppController, onCustomize: (() -> Unit)
             modifier = Modifier.padding(horizontal = SettingPadding),
         )
 
-        if (!running) controller.runSummary?.let { RunSummaryCard(it) }
+        if (!running) controller.runSummary?.let { RunSummaryCard(it, controller::noteName) }
     }
 }
 
@@ -314,7 +313,7 @@ private fun Stat(label: String, value: Int) {
 
 /** After a run in optimization mode: each step with what was recognised. */
 @Composable
-private fun RunSummaryCard(summary: RunSummary) {
+private fun RunSummaryCard(summary: RunSummary, noteName: (Int) -> String) {
     Card(Modifier.fillMaxWidth().padding(horizontal = SettingPadding, vertical = 12.dp)) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(stringResource(Res.string.run_summary_title), style = MaterialTheme.typography.titleMedium)
@@ -333,8 +332,8 @@ private fun RunSummaryCard(summary: RunSummary) {
                         false -> "✗"
                         null -> ""
                     },
-                    given = step.given.joinToString(" ") { NoteNames.displayName(it) },
-                    heard = step.detected.joinToString(" ") { NoteNames.displayName(it) }.ifEmpty { "–" },
+                    given = step.given.joinToString(" ") { noteName(it) },
+                    heard = step.detected.joinToString(" ") { noteName(it) }.ifEmpty { "–" },
                     wrong = step.correct == false,
                 )
             }

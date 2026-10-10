@@ -1,0 +1,6 @@
+The tones in this folder are derived from the VSCO 2 Community Edition by Versilian Studios
+(https://github.com/sgossner/VSCO-2-CE), released under CC0 1.0 (public domain).
+
+Changes: sustained samples of trumpet, tenor trombone, clarinet and flute, mixed to mono,
+resampled to 44.1 kHz / 16 bit, cut to the first 1.8 s with a fade-out, scaled to a common peak
+and encoded as FLAC (see tools/prepare_wind_test_samples.py).

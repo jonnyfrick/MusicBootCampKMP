@@ -12,7 +12,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import io.github.jonnyfrick.musicbootcamp.core.midi.NoteNames
 import io.github.jonnyfrick.musicbootcamp.core.model.Direction
 import io.github.jonnyfrick.musicbootcamp.core.model.PracticeMode
 import io.github.jonnyfrick.musicbootcamp.core.model.PracticeSettings
@@ -98,7 +97,7 @@ internal fun ExerciseSettings(controller: AppController) {
     }
 
     SettingsSection(stringResource(Res.string.section_range)) {
-        RangeSetting(settings, enabled) { low, high -> update { it.withRange(low, high) } }
+        RangeSetting(settings, enabled, controller::noteName) { low, high -> update { it.withRange(low, high) } }
     }
 
     SettingsSection(stringResource(Res.string.section_intervals)) {
@@ -156,14 +155,14 @@ internal fun ExerciseSettings(controller: AppController) {
 /** The range as one slider with two thumbs; it never gets smaller than [SettingsRules.MIN_RANGE]. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun RangeSetting(settings: PracticeSettings, enabled: Boolean, onChange: (Int, Int) -> Unit) {
+private fun RangeSetting(settings: PracticeSettings, enabled: Boolean, noteName: (Int) -> String, onChange: (Int, Int) -> Unit) {
     val lowest = SettingsRules.LOWEST_NOTE
     val highest = SettingsRules.HIGHEST_NOTE
     val minRange = SettingsRules.MIN_RANGE
     Column(Modifier.fillMaxWidth().padding(horizontal = SettingPadding, vertical = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                stringResource(Res.string.range, NoteNames.displayName(settings.lowLimit), NoteNames.displayName(settings.highLimit)),
+                stringResource(Res.string.range, noteName(settings.lowLimit), noteName(settings.highLimit)),
                 style = MaterialTheme.typography.bodyLarge,
                 modifier = Modifier.weight(1f),
             )
@@ -190,7 +189,7 @@ private fun RangeSetting(settings: PracticeSettings, enabled: Boolean, onChange:
             enabled = enabled,
         )
         Text(
-            stringResource(Res.string.range_hint, minRange, NoteNames.displayName(settings.startPosition)),
+            stringResource(Res.string.range_hint, minRange, noteName(settings.startPosition)),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

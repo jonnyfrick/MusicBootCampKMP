@@ -40,12 +40,18 @@ class ChordTracker(
     private val referenceAHz: Double = Tuning.STANDARD_A_HZ,
     private val parameters: ChordDetectionParameters = ChordDetectionParameters(),
     learned: LearnedTemplates = LearnedTemplates(),
+    /** The instrument the player answers on. */
+    instrument: InstrumentProfile = InstrumentProfile.PIANO,
     private val expected: () -> List<List<Int>> = { emptyList() },
 ) {
     private val strokes = NoteTracker(sampleRate, referenceAHz, parameters.strokes)
-    private val windowStart = parameters.windowStartMillis * sampleRate / 1000
-    private val windowEnd = maxOf(parameters.windowEndMillis * sampleRate / 1000, windowStart + FFT_SIZE)
-    private val spread = parameters.chordSpreadMillis * sampleRate / 1000
+    private val windowStart = (instrument.chordWindowStartMillis ?: parameters.windowStartMillis) * sampleRate / 1000
+    // A later start (blown notes scoop into their pitch) moves the whole window.
+    private val windowEnd = maxOf(
+        (parameters.windowEndMillis + (instrument.chordWindowStartMillis?.let { it - parameters.windowStartMillis } ?: 0)) * sampleRate / 1000,
+        windowStart + FFT_SIZE,
+    )
+    private val spread = (instrument.chordSpreadMillis ?: parameters.chordSpreadMillis) * sampleRate / 1000
 
     val templates = PianoTemplates(
         sampleRate, FFT_SIZE, referenceAHz, windowStart.toDouble() / sampleRate, windowEnd.toDouble() / sampleRate, learned,
@@ -53,7 +59,7 @@ class ChordTracker(
     private val candidates = (range.first - RANGE_MARGIN).coerceAtLeast(LogSpectrum.LOWEST_NOTE)..(range.last + RANGE_MARGIN).coerceAtMost(LogSpectrum.HIGHEST_NOTE - 12)
     private val recognizer: ChordRecognizer = when (parameters.method) {
         ChordMethod.TEMPLATES -> TemplateChordRecognizer(templates, candidates, parameters)
-        ChordMethod.HARMONIC -> HarmonicChordRecognizer(candidates, parameters, learned)
+        ChordMethod.HARMONIC -> HarmonicChordRecognizer(candidates, parameters, learned, instrument)
     }
 
     private val microphone = FloatArray(HISTORY_SECONDS * sampleRate)
@@ -196,8 +202,9 @@ fun Flow<AudioBlock>.detectedChords(
     learned: LearnedTemplates = LearnedTemplates(),
     expected: () -> List<List<Int>> = { emptyList() },
     onLevel: (Double) -> Unit = {},
+    instrument: InstrumentProfile = InstrumentProfile.PIANO,
 ): Flow<DetectedChord> = flow {
-    val tracker = ChordTracker(sampleRate, voices, range, referenceAHz, parameters, learned, expected)
+    val tracker = ChordTracker(sampleRate, voices, range, referenceAHz, parameters, learned, instrument, expected)
     collect { block ->
         val chords = tracker.process(block.microphone, block.reference)
         onLevel(tracker.level)

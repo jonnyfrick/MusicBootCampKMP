@@ -4,7 +4,8 @@
 Recordings are made in debug builds with Settings → Recognition → "Record exercises" or the
 optimization mode: a WAV file plus a JSON log with the same name.
 
-    tools/analyse_recordings.py android            the phone connected over USB (USB debugging on)
+    tools/analyse_recordings.py android            the Android app on the phone connected over USB (USB debugging on)
+    tools/analyse_recordings.py android-web        the web app used in the phone's browser (its Download folder)
     tools/analyse_recordings.py desktop            the desktop app's test data (build/dev-data)
     tools/analyse_recordings.py <folder or .wav>   e.g. ~/Downloads for recordings of the web app
 
@@ -16,8 +17,8 @@ Options:
     -P name=value   passed on to the replay as -Pmusicbootcamp.<name>=<value>
                     (parameters, sweep, templates, voices, learnTemplates; see RecordingReplayTest)
 
-Recordings fetched from the phone are kept in build/recordings/android (never committed: they are
-personal data). The analysis of each recording lands in core/build/analysis/<name>/: steps.txt
+Recordings fetched from the phone are kept in build/recordings/android and android-web (never
+committed: they are personal data). The analysis of each recording lands in core/build/analysis/<name>/: steps.txt
 (printed here), hops.csv and spectrogram.png.
 """
 import argparse
@@ -30,7 +31,9 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PACKAGE = "io.github.jonnyfrick.musicbootcamp"
 PHONE_FOLDER = f"/sdcard/Android/data/{PACKAGE}/files/recordings"
+PHONE_DOWNLOADS = "/sdcard/Download"
 ANDROID_COPY = os.path.join(ROOT, "build", "recordings", "android")
+ANDROID_WEB_COPY = os.path.join(ROOT, "build", "recordings", "android-web")
 DESKTOP_FOLDER = os.path.join(ROOT, "app", "desktopApp", "build", "dev-data", "recordings")
 
 
@@ -44,8 +47,8 @@ def adb():
     sys.exit("adb not found: install the Android platform tools or set ANDROID_HOME.")
 
 
-def fetch_from_phone():
-    """Copies the recordings that are not here yet from the phone; returns the local folder."""
+def fetch_from_phone(folder=PHONE_FOLDER, copy=ANDROID_COPY):
+    """Copies the recordings of [folder] on the phone that are not here yet; returns the local folder."""
     tool = adb()
     devices = subprocess.run([tool, "devices"], capture_output=True, text=True).stdout.splitlines()[1:]
     ready = [line.split()[0] for line in devices if line.strip().endswith("device")]
@@ -53,21 +56,21 @@ def fetch_from_phone():
         waiting = [line for line in devices if line.strip()]
         hint = f" (seen: {'; '.join(waiting)} - allow USB debugging on the phone)" if waiting else ""
         sys.exit("No phone connected. Plug it in with USB debugging on" + hint + ".")
-    listing = subprocess.run([tool, "shell", "ls", PHONE_FOLDER], capture_output=True, text=True)
+    listing = subprocess.run([tool, "shell", "ls", folder], capture_output=True, text=True)
     if listing.returncode != 0:
-        sys.exit(f"No recordings on the phone ({PHONE_FOLDER}): {listing.stderr.strip() or listing.stdout.strip()}")
-    os.makedirs(ANDROID_COPY, exist_ok=True)
-    names = [n for n in listing.stdout.split() if n.endswith((".wav", ".json"))]
-    new = [n for n in names if not os.path.isfile(os.path.join(ANDROID_COPY, n))]
+        sys.exit(f"No recordings on the phone ({folder}): {listing.stderr.strip() or listing.stdout.strip()}")
+    os.makedirs(copy, exist_ok=True)
+    names = [n for n in listing.stdout.split() if n.startswith("session-") and n.endswith((".wav", ".json"))]
+    new = [n for n in names if not os.path.isfile(os.path.join(copy, n))]
     for name in new:
-        target = os.path.join(ANDROID_COPY, name)
-        pulled = subprocess.run([tool, "pull", f"{PHONE_FOLDER}/{name}", target], capture_output=True, text=True)
+        target = os.path.join(copy, name)
+        pulled = subprocess.run([tool, "pull", f"{folder}/{name}", target], capture_output=True, text=True)
         if pulled.returncode != 0:
             # Some Android versions hide Android/data from adb; the debuggable app itself may read it.
             with open(target, "wb") as out:
-                subprocess.run([tool, "exec-out", "run-as", PACKAGE, "cat", f"{PHONE_FOLDER}/{name}"], stdout=out, check=True)
-    print(f"{len(names) // 2} recordings on the phone, {len(new)} files fetched to {os.path.relpath(ANDROID_COPY, ROOT)}")
-    return ANDROID_COPY
+                subprocess.run([tool, "exec-out", "run-as", PACKAGE, "cat", f"{folder}/{name}"], stdout=out, check=True)
+    print(f"{len(names) // 2} recordings on the phone, {len(new)} files fetched to {os.path.relpath(copy, ROOT)}")
+    return copy
 
 
 def recordings(source):
@@ -113,7 +116,7 @@ def analyse(wav, played, extra):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("source", help="android, desktop, or a folder / .wav file")
+    parser.add_argument("source", help="android, android-web, desktop, or a folder / .wav file")
     parser.add_argument("--last", type=int, default=1)
     parser.add_argument("--all", action="store_true")
     parser.add_argument("--list", action="store_true")
@@ -121,7 +124,11 @@ def main():
     parser.add_argument("-P", action="append", default=[], metavar="name=value")
     args = parser.parse_args()
 
-    source = {"android": fetch_from_phone, "desktop": lambda: DESKTOP_FOLDER}.get(args.source, lambda: os.path.expanduser(args.source))()
+    source = {
+        "android": fetch_from_phone,
+        "android-web": lambda: fetch_from_phone(PHONE_DOWNLOADS, ANDROID_WEB_COPY),
+        "desktop": lambda: DESKTOP_FOLDER,
+    }.get(args.source, lambda: os.path.expanduser(args.source))()
     found = recordings(source)
     if not found:
         sys.exit(f"No recordings (session-….wav with its .json) in {source}")

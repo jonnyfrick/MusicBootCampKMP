@@ -26,6 +26,7 @@ class HarmonicChordRecognizer(
     private val range: IntRange,
     private val parameters: ChordDetectionParameters = ChordDetectionParameters(),
     learned: LearnedTemplates = LearnedTemplates(),
+    private val instrument: InstrumentProfile = InstrumentProfile.PIANO,
 ) : ChordRecognizer {
     /**
      * Per calibrated note, which of its low partials (1–6, as by default) were clearly present —
@@ -86,9 +87,13 @@ class HarmonicChordRecognizer(
         return RecognizedChord(best.first, best.second, runnerUp?.first, runnerUp?.second, activations)
     }
 
-    /** The partials a note must show: those a calibration found, else 2–6 (and 1 from D3 up). */
+    /**
+     * The partials a note must show: those a calibration found, else the instrument's, else the
+     * piano's 2–6 (and 1 from D3 up).
+     */
     private fun needed(note: Int): Collection<Int> =
-        reliable[note] ?: ((if (note >= FUNDAMENTAL_FROM) 1 else 2)..minOf(RELIABLE_PARTIALS, parameters.partials)).toList()
+        reliable[note] ?: instrument.neededPartials
+            ?: ((if (note >= FUNDAMENTAL_FROM) 1 else 2)..minOf(RELIABLE_PARTIALS, parameters.partials)).toList()
 
     /** Whether the peak at [bin] lies on one of [note]'s partials. */
     private fun explains(note: Int, bin: Int): Boolean =
@@ -106,7 +111,8 @@ class HarmonicChordRecognizer(
 
     /** The log bin of partial [k] of [note], stretched by a typical inharmonicity; null above the analysed range. */
     private fun partialBin(note: Int, k: Int): Int? {
-        val b = 0.0001 * 2.0.pow((note - 21) / 20.0)
+        // Piano strings are stiff, which stretches their partials; a blown column of air is exactly harmonic.
+        val b = if (instrument.stretchedPartials) 0.0001 * 2.0.pow((note - 21) / 20.0) else 0.0
         val bin = LogSpectrum.binOfNote(note) + LogSpectrum.binsFor(k * sqrt(1 + b * k * k))
         return bin.roundToInt().takeIf { it < LogSpectrum.binOfNote(TOP_NOTE) }
     }

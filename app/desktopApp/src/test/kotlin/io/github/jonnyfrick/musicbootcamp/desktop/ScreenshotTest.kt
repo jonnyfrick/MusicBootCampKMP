@@ -167,7 +167,7 @@ class ScreenshotTest {
             click("Settings")
             snapshot("phone-4-settings")
             click("Input")
-            click("Microphone (acoustic piano)")
+            click("Microphone (acoustic instrument)")
             snapshot("phone-5-settings-input-microphone")
             clickIcon("Back")
 
@@ -216,7 +216,7 @@ class ScreenshotTest {
             snapshot("phone-de-1-practice")
             click("Einstellungen")
             click("Eingabe")
-            click("Mikrofon (akustisches Klavier)")
+            click("Mikrofon (akustisches Instrument)")
             snapshot("phone-de-2-settings-input")
         }
     }

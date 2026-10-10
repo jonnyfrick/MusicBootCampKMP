@@ -74,14 +74,25 @@ class NoteTracker(
     val sampleRate: Int,
     private val referenceAHz: Double = Tuning.STANDARD_A_HZ,
     private val parameters: DetectionParameters = DetectionParameters(),
+    /** The instrument the player answers on. */
+    private val instrument: InstrumentProfile = InstrumentProfile.PIANO,
+    /**
+     * Whether a change of pitch without a new attack counts as a note (held instruments only).
+     * Only safe where the app's own sound cannot be taken for the player's: with headphones, or
+     * once it is removed from the signal.
+     */
+    private val legato: Boolean = false,
 ) {
     private val noiseGate = parameters.noiseGate
     private val onsetRatio = parameters.onsetRatio
     private val minClarity = parameters.minClarity
-    private val confirmFrames = parameters.confirmFrames
+    private val confirmFrames = instrument.confirmFrames ?: parameters.confirmFrames
     private val detector = PitchDetector(sampleRate, peakThreshold = parameters.peakThreshold)
     private val windowSize = detector.windowSize
     private val hop = windowSize / 4
+    private val settleHops = maxOf(SETTLE_HOPS, instrument.settleMillis * sampleRate / 1000 / hop)
+    private val giveUpHops = GIVE_UP_HOPS - SETTLE_HOPS + settleHops + confirmFrames
+    private val sameAttackHops = SAME_ATTACK_MILLIS * sampleRate / 1000 / hop
 
     private val window = FloatArray(windowSize)
     private val background = FloatArray(windowSize)
@@ -100,11 +111,18 @@ class NoteTracker(
     private var candidateCount = 0
     private val candidateFrequencies = mutableListOf<Double>()
 
+    // Held instruments: the note sounding, to tell a new note from more of the same.
+    private var lastNote: Int? = null
+    private var lowestLevelSinceNote = 0.0
+    private var levelAtNote = 0.0
+    private var legatoCandidate: Int? = null
+    private var legatoCount = 0
+
     /**
      * The longest time from a key stroke to its note being confirmed: the hop with the onset,
      * the settling and the confirming windows. Audio buffering comes on top.
      */
-    val detectionDelay: Duration = ((SETTLE_HOPS + confirmFrames) * hop).toDouble().div(sampleRate).seconds
+    val detectionDelay: Duration = ((settleHops + confirmFrames) * hop).toDouble().div(sampleRate).seconds
 
     /** The estimate of the app's own sound, once a reference was given (for the chord analysis). */
     internal val ownSound: EchoEstimator? get() = echo
@@ -224,15 +242,17 @@ class NoteTracker(
             resetCandidate()
             return null
         }
-        if (hopsSinceOnset < 0) return null
+        if (level < lowestLevelSinceNote) lowestLevelSinceNote = level
+        if (level < noiseGate / 2) lastNote = null // silence: whatever comes next is a new note
+        if (hopsSinceOnset < 0) return if (legato && instrument.sustained) followPitch(ownSoundRemoved) else null
         hopsSinceOnset++
 
-        if (hopsSinceOnset > GIVE_UP_HOPS || level < noiseGate / 2) {
+        if (hopsSinceOnset > giveUpHops || level < noiseGate / 2) {
             hopsSinceOnset = -1
             return null
         }
-        // Wait until the whole window belongs to the new stroke.
-        if (hopsSinceOnset < SETTLE_HOPS) return null
+        // Wait until the whole window belongs to the new stroke (and a blown note has found its pitch).
+        if (hopsSinceOnset < settleHops) return null
 
         val ownSound = if (ownSoundRemoved) echo!!.echoPower else null
         val estimate = detector.detect(window, background, ownSound) ?: return null.also { resetCandidate() }
@@ -251,10 +271,43 @@ class NoteTracker(
         if (candidateCount < confirmFrames) return null
 
         hopsSinceOnset = -1 // one note per stroke
+        // A held tone swells slowly: its attack can look like several. The same note again soon
+        // after, without the level having dropped in between, is still that one attack.
+        val sameAttack = instrument.sustained && note == lastNote && hopsSinceNote < sameAttackHops &&
+            lowestLevelSinceNote > REATTACK_DIP * levelAtNote
+        return if (sameAttack) null else confirmed(note, candidateFrequencies.takeLast(confirmFrames).average(), ownSoundRemoved)
+    }
+
+    private fun confirmed(note: Int, frequency: Double, ownSoundRemoved: Boolean): DetectedNote {
         hopsSinceNote = 0
-        val frequency = candidateFrequencies.takeLast(confirmFrames).average()
+        lastNote = note
+        levelAtNote = level
+        lowestLevelSinceNote = level
+        legatoCandidate = null
+        legatoCount = 0
         val exact = frequencyToMidi(frequency, referenceAHz)
         return DetectedNote(note, frequency, (exact - note) * 100, samplesSeen, ownSoundRemoved)
+    }
+
+    /**
+     * Between attacks, on a held instrument: a clear pitch other than the note sounding, held
+     * for [LEGATO_FRAMES] windows, is a new note played without a new attack.
+     */
+    private fun followPitch(ownSoundRemoved: Boolean): DetectedNote? {
+        val sounding = lastNote ?: return null // legato continues a note; the first one has an attack
+        if (level < noiseGate) return null
+        val estimate = detector.detect(window, null, if (ownSoundRemoved) echo!!.echoPower else null)
+        val note = estimate?.takeIf { it.clarity >= minClarity }?.let { frequencyToMidi(it.frequencyHz, referenceAHz).roundToInt() }
+        if (note == null || note == sounding) {
+            legatoCandidate = null
+            legatoCount = 0
+            return null
+        }
+        if (note == legatoCandidate) legatoCount++ else {
+            legatoCandidate = note
+            legatoCount = 1
+        }
+        return if (legatoCount >= LEGATO_FRAMES) confirmed(note, estimate.frequencyHz, ownSoundRemoved) else null
     }
 
     private fun resetCandidate() {
@@ -270,6 +323,9 @@ class NoteTracker(
         const val SETTLE_HOPS = 3
         const val GIVE_UP_HOPS = 16
         const val PLAYER_ACTIVE_HOPS = 43 // ~0.5 s
+        const val SAME_ATTACK_MILLIS = 500
+        const val REATTACK_DIP = 0.5
+        const val LEGATO_FRAMES = 6 // ~70 ms: longer than the window takes to slide from one note to the next
     }
 }
 
@@ -280,7 +336,9 @@ fun Flow<FloatArray>.detectNotes(
     onNote: (DetectedNote) -> Unit = {},
     onLevel: (Double) -> Unit = {},
     parameters: DetectionParameters = DetectionParameters(),
-): Flow<MidiMessage> = map { AudioBlock(it) }.detectNotes(sampleRate, referenceAHz, onNote, onLevel, parameters)
+    instrument: InstrumentProfile = InstrumentProfile.PIANO,
+    legato: Boolean = false,
+): Flow<MidiMessage> = map { AudioBlock(it) }.detectNotes(sampleRate, referenceAHz, onNote, onLevel, parameters, instrument, legato)
 
 /** Like the microphone-only version; blocks with a reference have the app's own sound removed. */
 @JvmName("detectNotesInBlocks")
@@ -290,7 +348,9 @@ fun Flow<AudioBlock>.detectNotes(
     onNote: (DetectedNote) -> Unit = {},
     onLevel: (Double) -> Unit = {},
     parameters: DetectionParameters = DetectionParameters(),
-): Flow<MidiMessage> = detectedNotes(sampleRate, referenceAHz, onLevel, parameters)
+    instrument: InstrumentProfile = InstrumentProfile.PIANO,
+    legato: Boolean = false,
+): Flow<MidiMessage> = detectedNotes(sampleRate, referenceAHz, onLevel, parameters, instrument, legato)
     .onEach(onNote)
     .filter { it.midiNote in 0..127 }
     .map { it.toNoteOn() }
@@ -301,8 +361,10 @@ fun Flow<AudioBlock>.detectedNotes(
     referenceAHz: Double,
     onLevel: (Double) -> Unit = {},
     parameters: DetectionParameters = DetectionParameters(),
+    instrument: InstrumentProfile = InstrumentProfile.PIANO,
+    legato: Boolean = false,
 ): Flow<DetectedNote> = flow {
-    val tracker = NoteTracker(sampleRate, referenceAHz, parameters)
+    val tracker = NoteTracker(sampleRate, referenceAHz, parameters, instrument, legato)
     collect { block ->
         val notes = tracker.process(block.microphone, block.reference)
         onLevel(tracker.level)

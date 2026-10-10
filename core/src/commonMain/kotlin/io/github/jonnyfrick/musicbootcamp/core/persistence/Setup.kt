@@ -4,6 +4,7 @@ import io.github.jonnyfrick.musicbootcamp.core.learning.LearnedSequences
 import io.github.jonnyfrick.musicbootcamp.core.midi.Tuning
 import io.github.jonnyfrick.musicbootcamp.core.model.LearnedSequence
 import io.github.jonnyfrick.musicbootcamp.core.model.PracticeMode
+import io.github.jonnyfrick.musicbootcamp.core.model.PlayerInstrument
 import io.github.jonnyfrick.musicbootcamp.core.model.PracticeSettings
 import io.github.jonnyfrick.musicbootcamp.core.pitch.ChordDetectionParameters
 import io.github.jonnyfrick.musicbootcamp.core.pitch.DetectionParameters
@@ -77,6 +78,10 @@ data class AppPreferences(
     /** Where the played notes come from. */
     /** The microphone by default: most players sit at an acoustic piano, and it needs no device. */
     val inputSource: InputSource = InputSource.MICROPHONE,
+    /** The instrument the player answers on with the microphone. */
+    val instrument: PlayerInstrument = PlayerInstrument.PIANO,
+    /** Show notes as written for [instrument] (a B flat trumpet's C sounds B flat) instead of as they sound. */
+    val showTransposed: Boolean = false,
     /** Microphone for [InputSource.MICROPHONE]; null = system default. */
     val audioInputDevice: String? = null,
     /** With headphones the microphone cannot hear the app, so input is accepted at any time. */

@@ -373,6 +373,33 @@ several voices).
   output stays, so the app's own synthesizer keeps removing its sound). Test: `DeviceHotplugTest`.
 - Tests: `PianoSynthTest` (pitch as our recognition hears it, tuning, pedal, full scale, parser).
 
+### Answering on other instruments (winds)
+
+The recognition was built for the piano. Settings → Input → "Instrument" (`PlayerInstrument`,
+in the preferences) tells it what the player answers on; `InstrumentProfile` holds what differs:
+
+- **Settling:** a blown note scoops into its pitch. With the piano's settings (pitch read 35 ms
+  after the attack) real trumpet, trombone and clarinet tones came out a semitone off; winds wait
+  90 ms and need four agreeing windows.
+- **One attack:** a held tone swells slowly, which looked like several attacks (the same note two
+  or three times). The same note again within half a second, without the level having dropped,
+  is still that attack.
+- **Legato:** a clear pitch other than the note sounding, held for ~70 ms, is a new note without
+  a new attack (`NoteTracker.followPitch`). Only where the app's own sound cannot be taken for
+  it: with headphones or when the app renders (and so removes) its sound.
+- **Chords:** no stretching of partials; which low partials a note must show (winds 1–4, the
+  clarinet 1 and 3, the flute only its fundamental); the analysis window starts 100 ms after the
+  attack, and attacks within 150 ms are one chord (players never start exactly together).
+- **Transposition:** the exercise always works in sounding pitch (played by ear). "Show notes as
+  written" only changes how notes are displayed (`AppController.noteName`).
+
+Tested on real tones (VSCO 2 Community Edition, CC0; `tools/prepare_wind_test_samples.py`,
+`WindRecognitionTest`): every single tone of trumpet, trombone, clarinet and flute is heard once
+and right (18 of 42 were wrong with the piano's settings), slurs up and down, pairs and triads
+of one instrument, trombone with trumpet. Not tested: live players (vibrato, intonation, room),
+oboe, saxophones and horn (they use the general wind profile), and the trombone's lowest fifth
+in chords.
+
 ### The app's own piano: a sampler
 
 Android, iOS and browsers have no real-time synthesizer, and only a sound the app renders itself

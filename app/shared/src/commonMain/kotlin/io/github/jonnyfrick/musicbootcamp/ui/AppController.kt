@@ -8,7 +8,9 @@ import io.github.jonnyfrick.musicbootcamp.core.audio.SessionRecorder
 import io.github.jonnyfrick.musicbootcamp.core.audio.StepSummary
 import io.github.jonnyfrick.musicbootcamp.core.learning.LearnedSequences
 import io.github.jonnyfrick.musicbootcamp.core.legacy.LegacyImport
+import io.github.jonnyfrick.musicbootcamp.core.midi.NoteNames
 import io.github.jonnyfrick.musicbootcamp.core.midi.Tuning
+import io.github.jonnyfrick.musicbootcamp.core.model.PlayerInstrument
 import io.github.jonnyfrick.musicbootcamp.core.model.PracticeSettings
 import io.github.jonnyfrick.musicbootcamp.core.persistence.AppPreferences
 import io.github.jonnyfrick.musicbootcamp.core.persistence.Setup
@@ -356,6 +358,7 @@ class AppController(
             "optimizationSteps" to (optimizationSteps?.toString() ?: ""),
             "detectionParameters" to tuning.detectionParameters.toJson(),
             "voices" to settings.mode.voices.toString(),
+            "instrument" to preferences.instrument.name,
             "octavesCountAsCorrect" to preferences.octavesCountAsCorrect.toString(),
             "range" to "${settings.lowLimit}..${settings.highLimit}",
             "chordDetectionParameters" to tuning.chordParameters(settings.mode.voices).toJson(),
@@ -439,10 +442,16 @@ class AppController(
         gate = ownSound
         // The tolerance counts from the key stroke; the note arrives only once it is recognised.
         // A chord is decided only after its analysis window.
+        val instrument = preferences.instrument.profile
+        // A change of pitch without a new attack only counts where the app's own sound cannot be
+        // taken for it: with headphones, or when the app renders (and so removes) its sound.
+        val legato = instrument.sustained && (preferences.usesHeadphones || rendered != null)
         lateAnswerTolerance = settings.lateAnswerToleranceMillis.milliseconds + if (voices > 1) {
-            chordParameters.windowEndMillis.milliseconds + NoteTracker(audio.sampleRate, parameters = chordParameters.strokes).detectionDelay
+            val windowShift = instrument.chordWindowStartMillis?.let { it - chordParameters.windowStartMillis } ?: 0
+            (chordParameters.windowEndMillis + windowShift).milliseconds +
+                NoteTracker(audio.sampleRate, parameters = chordParameters.strokes).detectionDelay
         } else {
-            NoteTracker(audio.sampleRate, parameters = parameters).detectionDelay
+            NoteTracker(audio.sampleRate, parameters = parameters, instrument = instrument).detectionDelay
         }
         val recording = if (tuning.recordMicrophone || tuning.optimizationMode) {
             val channels = if (rendered != null) listOf("microphone", "reference") else listOf("microphone")
@@ -459,7 +468,7 @@ class AppController(
                 .detectedChords(
                     audio.sampleRate, voices, settings.lowLimit..settings.highLimit, preferences.referenceAHz,
                     chordParameters, learnedTemplates, expected = { expectedChords.value },
-                    onLevel = { microphoneLevel = it },
+                    onLevel = { microphoneLevel = it }, instrument = instrument,
                 )
                 .onEach { recording?.detectedChord(it) }
                 .flowOn(Dispatchers.Default)
@@ -470,7 +479,10 @@ class AppController(
         }
         return blocks
             .onEach { block -> recording?.audio(listOfNotNull(block.microphone, block.reference)) }
-            .detectedNotes(audio.sampleRate, preferences.referenceAHz, onLevel = { microphoneLevel = it }, parameters = parameters)
+            .detectedNotes(
+                audio.sampleRate, preferences.referenceAHz, onLevel = { microphoneLevel = it }, parameters = parameters,
+                instrument = instrument, legato = legato,
+            )
             .onEach { recording?.detected(it) }
             .flowOn(Dispatchers.Default)
             // Evaluated where the exercise runs, which is also where the gate sees the notes played.
@@ -566,6 +578,8 @@ class AppController(
                     onNote = { micTestNote = it },
                     onLevel = { microphoneLevel = it },
                     parameters = tuning.detectionParameters,
+                    instrument = preferences.instrument.profile,
+                    legato = true, // nothing else sounds during the test
                 )
                 .flowOn(Dispatchers.Default)
                 .collect()
@@ -776,6 +790,15 @@ class AppController(
 
     fun setInputSource(source: InputSource) = updatePreferences { it.copy(inputSource = source) }
     fun setUsesHeadphones(uses: Boolean) = updatePreferences { it.copy(usesHeadphones = uses) }
+    fun setInstrument(instrument: PlayerInstrument) = updatePreferences { it.copy(instrument = instrument) }
+    fun setShowTransposed(show: Boolean) = updatePreferences { it.copy(showTransposed = show) }
+
+    /**
+     * How a (sounding) note is shown: its name, or, with [AppPreferences.showTransposed], the
+     * note a player of the chosen transposing instrument reads for it.
+     */
+    fun noteName(midiNote: Int): String =
+        NoteNames.displayName(midiNote + if (preferences.showTransposed) preferences.instrument.transposition else 0)
     fun setOctavesCountAsCorrect(on: Boolean) = updatePreferences { it.copy(octavesCountAsCorrect = on) }
     fun setOptimizationMode(on: Boolean) = updatePreferences { it.copy(optimizationMode = on) }
     fun setOptimizationSteps(steps: Int) =

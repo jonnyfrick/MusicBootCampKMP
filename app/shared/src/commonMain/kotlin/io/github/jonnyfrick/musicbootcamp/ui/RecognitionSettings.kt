@@ -17,7 +17,6 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import io.github.jonnyfrick.musicbootcamp.core.midi.NoteNames
 import io.github.jonnyfrick.musicbootcamp.core.persistence.InputSource
 import io.github.jonnyfrick.musicbootcamp.core.persistence.OPTIMIZATION_STEP_RANGE
 import io.github.jonnyfrick.musicbootcamp.core.pitch.ChordDetectionParameters
@@ -203,7 +202,7 @@ private fun CalibrationSettings(controller: AppController) {
     SettingsSection(stringResource(Res.string.section_calibration)) {
         SettingHint(
             (if (learned == 0) stringResource(Res.string.calibration_none) else stringResource(Res.string.calibration_some, learned)) + " " +
-                stringResource(Res.string.calibration_hint, NoteNames.displayName(settings.lowLimit), NoteNames.displayName(settings.highLimit)),
+                stringResource(Res.string.calibration_hint, controller.noteName(settings.lowLimit), controller.noteName(settings.highLimit)),
         )
         if (controller.calibrating) {
             val (done, total) = controller.calibrationProgress
@@ -213,14 +212,14 @@ private fun CalibrationSettings(controller: AppController) {
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Text(
-                        controller.calibrationTarget?.let { stringResource(Res.string.calibration_play, NoteNames.displayName(it)) }
+                        controller.calibrationTarget?.let { stringResource(Res.string.calibration_play, controller.noteName(it)) }
                             ?: stringResource(Res.string.calibration_done),
                         style = MaterialTheme.typography.displaySmall,
                     )
                     Text(stringResource(Res.string.calibration_progress, done, total), style = MaterialTheme.typography.bodyMedium)
                     controller.calibrationHeard?.let { heard ->
                         Text(
-                            stringResource(Res.string.calibration_heard, heard.joinToString(" ") { NoteNames.displayName(it) }),
+                            stringResource(Res.string.calibration_heard, heard.joinToString(" ") { controller.noteName(it) }),
                             color = MaterialTheme.colorScheme.error,
                         )
                     }

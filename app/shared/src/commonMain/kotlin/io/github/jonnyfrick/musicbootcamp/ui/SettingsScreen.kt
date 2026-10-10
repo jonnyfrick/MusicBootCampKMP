@@ -34,6 +34,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import io.github.jonnyfrick.musicbootcamp.core.midi.NoteNames
 import io.github.jonnyfrick.musicbootcamp.core.midi.Tuning
+import io.github.jonnyfrick.musicbootcamp.core.model.PlayerInstrument
 import io.github.jonnyfrick.musicbootcamp.core.persistence.InputSource
 import io.github.jonnyfrick.musicbootcamp.platform.BUILT_IN_PIANO
 import io.github.jonnyfrick.musicbootcamp.resources.*
@@ -128,7 +129,9 @@ internal fun SettingsScreen(controller: AppController, snackbar: SnackbarHostSta
 private fun summary(controller: AppController, page: SettingsPage): String? {
     val preferences = controller.preferences
     return when (page) {
-        SettingsPage.INPUT -> inputLabel(preferences.inputSource)
+        SettingsPage.INPUT ->
+            if (preferences.inputSource == InputSource.MICROPHONE) "${stringResource(Res.string.microphone)} · ${instrumentName(preferences.instrument)}"
+            else inputLabel(preferences.inputSource)
         SettingsPage.MIDI -> listOfNotNull(selectedInput(controller), selectedOutput(controller)).joinToString(" → ").ifEmpty { null }
         SettingsPage.TUNING -> "A = ${stringResource(Res.string.value_hz, preferences.referenceAHz.toString())}"
         SettingsPage.RECOGNITION -> stringResource(Res.string.settings_recognition_summary)
@@ -168,6 +171,7 @@ private fun InputSettings(controller: AppController) {
 
     SettingsSection(stringResource(Res.string.microphone)) {
         val systemDefault = stringResource(Res.string.system_default)
+        val instrumentNames = PlayerInstrument.entries.associateWith { instrumentName(it) }
         ChoiceSetting(
             title = stringResource(Res.string.microphone),
             options = listOf<String?>(null) + controller.audioInputDevices,
@@ -178,6 +182,24 @@ private fun InputSettings(controller: AppController) {
             enabled = !running,
             icon = AppIcons.Mic,
         )
+        ChoiceSetting(
+            title = stringResource(Res.string.instrument),
+            options = PlayerInstrument.entries,
+            selected = preferences.instrument,
+            label = { instrumentNames.getValue(it) },
+            onSelect = controller::setInstrument,
+            enabled = !running,
+            icon = AppIcons.MusicNote,
+        )
+        SettingHint(stringResource(Res.string.instrument_hint))
+        if (preferences.instrument.transposition != 0) {
+            SwitchSetting(
+                title = stringResource(Res.string.show_transposed),
+                checked = preferences.showTransposed,
+                onCheckedChange = controller::setShowTransposed,
+                supporting = stringResource(Res.string.show_transposed_hint),
+            )
+        }
         SwitchSetting(
             title = stringResource(Res.string.headphones),
             checked = preferences.usesHeadphones,
@@ -201,6 +223,22 @@ private fun InputSettings(controller: AppController) {
 }
 
 @Composable
+internal fun instrumentName(instrument: PlayerInstrument): String = stringResource(
+    when (instrument) {
+        PlayerInstrument.PIANO -> Res.string.instrument_piano
+        PlayerInstrument.FLUTE -> Res.string.instrument_flute
+        PlayerInstrument.OBOE -> Res.string.instrument_oboe
+        PlayerInstrument.CLARINET_B_FLAT -> Res.string.instrument_clarinet
+        PlayerInstrument.ALTO_SAXOPHONE -> Res.string.instrument_alto_saxophone
+        PlayerInstrument.TENOR_SAXOPHONE -> Res.string.instrument_tenor_saxophone
+        PlayerInstrument.TRUMPET_B_FLAT -> Res.string.instrument_trumpet
+        PlayerInstrument.HORN_F -> Res.string.instrument_horn
+        PlayerInstrument.TROMBONE -> Res.string.instrument_trombone
+        PlayerInstrument.OTHER_SUSTAINED -> Res.string.instrument_other
+    },
+)
+
+@Composable
 private fun MicrophoneTest(controller: AppController) {
     ButtonRow {
         if (controller.micTesting) {
@@ -216,7 +254,7 @@ private fun MicrophoneTest(controller: AppController) {
                     stringResource(Res.string.play_a_key)
                 } else {
                     val cents = note.cents.roundToInt()
-                    "${NoteNames.displayName(note.midiNote)} (${if (cents >= 0) "+" else ""}$cents ct)"
+                    "${controller.noteName(note.midiNote)} (${if (cents >= 0) "+" else ""}$cents ct)"
                 },
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },

@@ -95,6 +95,9 @@ Sound: every platform offers the MIDI output "MusicBootCamp Piano", the app's ow
 Piano by Alexander Holm, CC BY 3.0; see `app/shared/src/commonMain/composeResources/files/piano/LICENSE.txt`).
 On the desktop it is listed next to Gervill.
 
+Instruments: with the microphone you can answer on a piano or, chosen under Settings → Input → Instrument, on a
+wind instrument (also several players for chords); transposing instruments can have notes shown as written.
+
 Bluetooth MIDI: on Android and iOS under Settings → MIDI devices → "Connect Bluetooth MIDI…"; on macOS connect the
 device in Audio MIDI Setup → Bluetooth, then it is listed like any MIDI device.
 

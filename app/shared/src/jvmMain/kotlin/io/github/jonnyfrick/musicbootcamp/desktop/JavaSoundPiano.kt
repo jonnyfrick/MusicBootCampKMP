@@ -10,6 +10,8 @@ import javax.sound.sampled.AudioFormat
 import javax.sound.sampled.AudioSystem
 import javax.sound.sampled.SourceDataLine
 import kotlin.concurrent.thread
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * The app's own piano ([Instruments.piano]: recorded samples) on the desktop's default audio
@@ -39,6 +41,8 @@ private class JavaSoundPianoPort(sampleRate: Int) : RenderedOutputPort {
     override fun playedAudio(frames: Int): FloatArray = synchronized(this) {
         played.read(frames, line.longFramePosition, LEAD_FRAMES, RESYNC_FRAMES)
     }
+
+    override val bufferedTime: Duration = (LINE_BUFFER_FRAMES.toDouble() / format.sampleRate).seconds
 
     override fun diagnostics(): Map<String, String> = synchronized(this) { mapOf("referenceResyncs" to played.resyncs.toString()) }
 

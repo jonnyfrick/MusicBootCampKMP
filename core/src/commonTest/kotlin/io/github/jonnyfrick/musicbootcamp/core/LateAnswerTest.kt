@@ -302,6 +302,17 @@ class LateAnswerTest {
     }
 
     @Test
+    fun ownSoundGateWaitsForAnOutputThatPlaysAhead() {
+        val time = TestTimeSource()
+        val gate = OwnSoundGate({ }, timeSource = time, outputDelay = 250.milliseconds)
+        gate.send(MidiMessage.noteOn(60, 80))
+        time += 550.milliseconds
+        assertFalse(gate.accepts(key(60)), "the app's note, heard a quarter of a second late")
+        time += 200.milliseconds
+        assertTrue(gate.accepts(key(60)))
+    }
+
+    @Test
     fun ownSoundGateTakesAChordForTheAppsOnlyRightAfterItsAttack() {
         // Found live on a phone: the answer to the first step (the same notes the app still sounds,
         // before its sound can be removed) was ignored for the whole length of the app's note.

@@ -12,6 +12,8 @@ import javax.sound.sampled.AudioInputStream
 import javax.sound.sampled.AudioSystem
 import javax.sound.sampled.SourceDataLine
 import kotlin.concurrent.thread
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * Java's software synthesizer Gervill, rendered by the app instead of playing on its own, so
@@ -54,6 +56,8 @@ private class GervillPort(sampleRate: Int) : RenderedOutputPort {
     override fun playedAudio(frames: Int): FloatArray = synchronized(this) {
         played.read(frames, line.longFramePosition, LEAD_FRAMES, RESYNC_FRAMES)
     }
+
+    override val bufferedTime: Duration = (LINE_BUFFER_FRAMES.toDouble() / format.sampleRate).seconds
 
     override fun diagnostics(): Map<String, String> = synchronized(this) { mapOf("referenceResyncs" to played.resyncs.toString()) }
 

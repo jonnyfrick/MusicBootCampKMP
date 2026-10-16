@@ -32,7 +32,15 @@ class OwnSoundGate(
     private val attackTime: Duration = 450.milliseconds,
     /** The same for a chord, whose analysis takes about 400 ms. */
     private val chordAttackTime: Duration = 900.milliseconds,
+    /**
+     * How long the output holds a note before playing it (a buffer filled ahead): added to both
+     * times. Found in a browser, which plays a quarter of a second ahead: the app's own notes
+     * arrived after the window and were taken for the player's answers.
+     */
+    outputDelay: Duration = Duration.ZERO,
 ) : MidiOutput {
+    private val noteTime = attackTime + outputDelay
+    private val chordTime = chordAttackTime + outputDelay
     private val sounding = mutableSetOf<Int>()
     private val struck = mutableMapOf<Int, TimeMark>()
     private var lastSilence = timeSource.markNow() - releaseTime
@@ -61,13 +69,13 @@ class OwnSoundGate(
      * Whether a recognised note can be the player's: unless the app struck that note, or an
      * octave of it (pitch detection sometimes reads a note an octave off), within [attackTime].
      */
-    fun accepts(message: MidiMessage): Boolean = !struckWithin(message.data1, attackTime)
+    fun accepts(message: MidiMessage): Boolean = !struckWithin(message.data1, noteTime)
 
     /** For a recognised chord: ignored only if every one of its notes is one the app struck within [chordAttackTime]. */
-    fun acceptsChord(notes: List<Int>): Boolean = notes.any { !struckWithin(it, chordAttackTime) }
+    fun acceptsChord(notes: List<Int>): Boolean = notes.any { !struckWithin(it, chordTime) }
 
     private fun struckWithin(note: Int, time: Duration): Boolean {
-        struck.entries.removeAll { it.value.elapsedNow() >= maxOf(attackTime, chordAttackTime) }
+        struck.entries.removeAll { it.value.elapsedNow() >= maxOf(noteTime, chordTime) }
         return struck.any { (appNote, mark) -> (note - appNote) % 12 == 0 && mark.elapsedNow() < time }
     }
 }

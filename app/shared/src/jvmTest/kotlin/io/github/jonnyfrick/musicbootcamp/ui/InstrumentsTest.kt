@@ -14,6 +14,7 @@ import javax.sound.sampled.AudioSystem
 import kotlin.math.ln
 import kotlin.math.roundToInt
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /** The piano samples shipped with the app, loaded as the app loads them. */
@@ -37,6 +38,15 @@ class InstrumentsTest {
             if (heard != note) wrong += "$note heard as $heard"
         }
         assertTrue(wrong.isEmpty(), "wrong: $wrong")
+    }
+
+    @Test
+    fun theExercisesRangeIsDecodedFirst() {
+        val (first, rest) = Instruments.loadingOrder(48..72)
+        assertTrue(first.all { it in 45..75 } && first.size == 11, "$first")
+        assertTrue(first.first() <= 48 && first.last() >= 72, "the range is covered: $first")
+        assertEquals(30, first.size + rest.size)
+        assertEquals(1, Instruments.loadingOrder(null).size)
     }
 
     @Test

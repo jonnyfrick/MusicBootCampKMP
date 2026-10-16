@@ -363,6 +363,16 @@ several voices).
     a chord within 0.9 s: the recognition only sees what a stroke adds, and the app's note has
     one attack.
   - Recordings now log `outputUnderruns` and `referenceResyncs` (`RenderedOutputPort.diagnostics`).
+  - With the bigger output buffers (Android ~190 ms, the browser 250 ms ahead) the app's own note
+    reached the microphone after the gate's 0.45 s and was taken for the answer; the player's
+    real, late answer then fell to the next step and counted as wrong (found in browser runs at
+    1.1 s per step). The gate's windows now add the output's `bufferedTime`.
+  - A run started while the samples were still being decoded (seconds, in a phone's browser)
+    sounded synthetic throughout: `SwitchingSynth` moves to the sampled piano from the next note.
+    The samples around the exercise's range are decoded first (about a third) and used at once,
+    and browsers decode with their own native decoder (`PlatformServices.audioDecoder`): all 30
+    in 0.19 s on a Mac; the common Kotlin decoder, running as WebAssembly, is the fallback.
+    Recordings log `pianoSamplesLoadedMillis`.
 - **Storage:** setups in the app's private files; recordings in
   `Android/data/io.github.jonnyfrick.musicbootcamp/files/recordings`, reachable over USB.
 - **Lifecycle:** rotating or resizing keeps the activity (`configChanges`), so an exercise keeps

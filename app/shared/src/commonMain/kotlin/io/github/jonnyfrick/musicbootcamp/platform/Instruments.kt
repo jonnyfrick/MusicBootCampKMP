@@ -4,6 +4,7 @@ import io.github.jonnyfrick.musicbootcamp.core.audio.PianoSynth
 import io.github.jonnyfrick.musicbootcamp.core.audio.SampleSet
 import io.github.jonnyfrick.musicbootcamp.core.audio.Sampler
 import io.github.jonnyfrick.musicbootcamp.core.audio.SoftwareSynth
+import io.github.jonnyfrick.musicbootcamp.core.audio.SwitchingSynth
 import io.github.jonnyfrick.musicbootcamp.resources.Res
 import kotlin.concurrent.Volatile
 
@@ -31,8 +32,13 @@ object Instruments {
         piano = SampleSet.fromFlac(PIANO_NOTES.associateWith { note -> Res.readBytes("files/piano/${note.toString().padStart(3, '0')}.flac") })
     }
 
-    /** The app's piano for an output of [sampleRate]: sampled if the samples are loaded, else synthetic. */
-    fun piano(sampleRate: Int): SoftwareSynth = piano?.let { Sampler(it, sampleRate) } ?: PianoSynth(sampleRate)
+    /**
+     * The app's piano for an output of [sampleRate]: sampled if the samples are loaded; else
+     * synthetic until they are, then sampled from the next note on (in a browser, decoding them
+     * takes a few seconds, and an exercise may well start before).
+     */
+    fun piano(sampleRate: Int): SoftwareSynth =
+        piano?.let { Sampler(it, sampleRate) } ?: SwitchingSynth(PianoSynth(sampleRate)) { piano?.let { Sampler(it, sampleRate) } }
 }
 
 /**

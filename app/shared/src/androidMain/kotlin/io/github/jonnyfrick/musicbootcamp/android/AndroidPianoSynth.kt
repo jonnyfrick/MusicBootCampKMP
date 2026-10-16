@@ -11,6 +11,8 @@ import io.github.jonnyfrick.musicbootcamp.platform.PlayedAudioBuffer
 import io.github.jonnyfrick.musicbootcamp.platform.RenderedOutputPort
 import io.github.jonnyfrick.musicbootcamp.platform.RenderedSynth
 import kotlin.concurrent.thread
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * The app's own piano ([Instruments.piano]) on the loudspeaker: Android has no real-time synthesizer to send
@@ -22,7 +24,7 @@ class AndroidPianoSynth : RenderedSynth {
     override fun open(sampleRate: Int): RenderedOutputPort = AndroidSynthPort(sampleRate)
 }
 
-private class AndroidSynthPort(sampleRate: Int) : RenderedOutputPort {
+private class AndroidSynthPort(private val sampleRate: Int) : RenderedOutputPort {
     private val synth = Instruments.piano(sampleRate)
     private val played = PlayedAudioBuffer()
     private val lock = Any()
@@ -64,6 +66,8 @@ private class AndroidSynthPort(sampleRate: Int) : RenderedOutputPort {
         // The play head counts frames since play() as an unsigned 32-bit number.
         played.read(frames, track.playbackHeadPosition.toLong() and 0xFFFFFFFFL, LEAD_FRAMES, RESYNC_FRAMES)
     }
+
+    override val bufferedTime: Duration = (track.bufferSizeInFrames.toDouble() / sampleRate).seconds
 
     override fun diagnostics(): Map<String, String> = synchronized(lock) {
         mapOf("outputUnderruns" to track.underrunCount.toString(), "referenceResyncs" to played.resyncs.toString())

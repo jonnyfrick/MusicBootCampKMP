@@ -438,7 +438,7 @@ class AppController(
         val removeOwnSound = if (voices > 1) chordParameters.strokes.echoCancellation else parameters.echoCancellation
         val rendered = if (preferences.usesHeadphones || !removeOwnSound) null else openRenderedOutput(audio.sampleRate)
         val midiOutput = rendered ?: openOutput()
-        val ownSound = if (preferences.usesHeadphones) null else OwnSoundGate(midiOutput)
+        val ownSound = if (preferences.usesHeadphones) null else OwnSoundGate(midiOutput, outputDelay = rendered?.bufferedTime ?: Duration.ZERO)
         gate = ownSound
         // The tolerance counts from the key stroke; the note arrives only once it is recognised.
         // A chord is decided only after its analysis window.

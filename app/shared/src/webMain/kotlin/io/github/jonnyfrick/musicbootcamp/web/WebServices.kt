@@ -21,6 +21,8 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
@@ -96,6 +98,8 @@ private class WebSynthPort : RenderedOutputPort {
     )
 
     override fun send(message: MidiMessage) = synth.send(message)
+
+    override val bufferedTime: Duration = AHEAD_SECONDS.seconds
 
     // The worklet reports how many frames it has handed to the loudspeaker.
     override fun playedAudio(frames: Int): FloatArray = played.read(frames, playerPosition(player).toLong(), LEAD_FRAMES, RESYNC_FRAMES)

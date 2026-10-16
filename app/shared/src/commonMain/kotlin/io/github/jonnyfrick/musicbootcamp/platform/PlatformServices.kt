@@ -7,6 +7,7 @@ import io.github.jonnyfrick.musicbootcamp.core.persistence.DocumentStore
 import io.github.jonnyfrick.musicbootcamp.core.persistence.InMemoryDocumentStore
 import io.github.jonnyfrick.musicbootcamp.core.pitch.AudioBlock
 import kotlinx.coroutines.flow.Flow
+import kotlin.time.Duration
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.map
 
@@ -104,6 +105,12 @@ interface RenderedOutputPort : MidiOutputPort {
      * same number of microphone samples, so both stay roughly in step.
      */
     fun playedAudio(frames: Int): FloatArray
+
+    /**
+     * How long a note sent now waits in the output's buffer before the loudspeaker plays it
+     * (beyond the system's own latency): the app's own attack reaches the microphone that much later.
+     */
+    val bufferedTime: Duration get() = Duration.ZERO
 
     /** Counts of what went wrong while playing (dropouts, lost alignment), for a recording's log. */
     fun diagnostics(): Map<String, String> = emptyMap()

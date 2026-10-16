@@ -160,6 +160,8 @@ class PlatformServices(
      * [RenderedSynth.deviceName]; only their sound can be removed from the microphone signal.
      */
     val renderedSynths: List<RenderedSynth> = emptyList(),
+    /** Decodes the app's (FLAC) sound files where the platform does it faster than the common decoder (browsers). */
+    val audioDecoder: (suspend (ByteArray) -> DecodedAudio)? = null,
     /** Null where Bluetooth MIDI devices need no connecting in the app, or cannot be used. */
     val bluetoothMidi: BluetoothMidiConnector? = null,
     /**

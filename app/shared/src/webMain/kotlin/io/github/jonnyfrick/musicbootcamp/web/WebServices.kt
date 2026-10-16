@@ -6,6 +6,8 @@ import io.github.jonnyfrick.musicbootcamp.core.persistence.DocumentStore
 import io.github.jonnyfrick.musicbootcamp.platform.AudioInputBackend
 import io.github.jonnyfrick.musicbootcamp.platform.AudioInputPort
 import io.github.jonnyfrick.musicbootcamp.platform.BUILT_IN_PIANO
+import io.github.jonnyfrick.musicbootcamp.platform.DecodedAudio
+import io.github.jonnyfrick.musicbootcamp.platform.decodeFlac
 import io.github.jonnyfrick.musicbootcamp.platform.Instruments
 import io.github.jonnyfrick.musicbootcamp.platform.MidiBackend
 import io.github.jonnyfrick.musicbootcamp.platform.MidiInputPort
@@ -43,6 +45,7 @@ fun webServices(): PlatformServices {
         documents = LocalStorageDocumentStore(),
         legacyFiles = null,
         audio = WebAudioInput(),
+        audioDecoder = ::decodeInBrowser,
         recordings = DownloadRecordingStore(),
         // TEMPORARY: the developer tools (Settings → Recognition: recording, optimization mode,
         // detection parameters) are on for everyone on the web, to tune the recognition in
@@ -51,6 +54,23 @@ fun webServices(): PlatformServices {
         renderedSynths = listOf(piano),
     )
 }
+
+/**
+ * Decodes a sound file with the browser's own decoder (native code, off the main thread), which
+ * is much faster than the common Kotlin one running as WebAssembly; that one is the fallback.
+ * Samples cross into Kotlin packed in a string, two orders of magnitude cheaper than one call
+ * per sample, at 15 bits (a code unit per sample, kept below the surrogate range).
+ */
+private suspend fun decodeInBrowser(bytes: ByteArray): DecodedAudio {
+    val packed = CharArray(bytes.size) { (bytes[it].toInt() and 0xFF).toChar() }.concatToString()
+    val result = suspendCoroutine { continuation -> decodeAudio(packed) { rate, samples -> continuation.resume(rate to samples) } }
+    val (rate, samples) = result
+    if (rate <= 0 || samples == null) return decodeFlac(bytes)
+    return DecodedAudio(rate, FloatArray(samples.length) { (samples[it].code - PACKED_ZERO) / PACKED_SCALE })
+}
+
+private const val PACKED_ZERO = 16384
+private const val PACKED_SCALE = 16383f
 
 /** One local-storage entry per document. Local storage is synchronous and holds a few megabytes. */
 private class LocalStorageDocumentStore : DocumentStore {
@@ -424,6 +444,30 @@ private fun midiSend(name: String, status: Int, data1: Int, data2: Int): Unit = 
         if (access) access.outputs.forEach(function (port) {
             if (port.name === name) port.send((status & 0xF0) === 0xC0 || (status & 0xF0) === 0xD0 ? [status, data1] : [status, data1, data2]);
         });
+    }""",
+)
+
+/** Decodes the file in [data] (one byte per character); [done] gets its sample rate and samples packed as by [decodeInBrowser], or 0 and null. */
+private fun decodeAudio(data: String, done: (Int, String?) -> Unit): Unit = js(
+    """{
+        var started = performance.now();
+        var bytes = new Uint8Array(data.length);
+        for (var i = 0; i < data.length; i++) bytes[i] = data.charCodeAt(i);
+        // An offline context at the file's own rate: decoding resamples to the context's rate.
+        var context = new OfflineAudioContext(1, 1, 44100);
+        context.decodeAudioData(bytes.buffer).then(function (buffer) {
+            var samples = buffer.getChannelData(0);
+            var parts = [];
+            for (var i = 0; i < samples.length; i += 8192) {
+                var n = Math.min(8192, samples.length - i);
+                var codes = new Array(n);
+                for (var j = 0; j < n; j++) codes[j] = Math.round(Math.max(-1, Math.min(1, samples[i + j])) * 16383) + 16384;
+                parts.push(String.fromCharCode.apply(null, codes));
+            }
+            var s = globalThis.__mbc;
+            s.decodeMillis = (s.decodeMillis || 0) + performance.now() - started;
+            done(buffer.sampleRate, parts.join(''));
+        }, function () { done(0, null); });
     }""",
 )
 

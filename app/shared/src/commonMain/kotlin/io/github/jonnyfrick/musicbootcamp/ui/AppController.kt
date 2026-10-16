@@ -32,6 +32,7 @@ import io.github.jonnyfrick.musicbootcamp.core.pitch.toNoteOn
 import io.github.jonnyfrick.musicbootcamp.core.practice.OwnSoundGate
 import io.github.jonnyfrick.musicbootcamp.platform.AudioInputPort
 import io.github.jonnyfrick.musicbootcamp.platform.Instruments
+import io.github.jonnyfrick.musicbootcamp.platform.decodeFlac
 import io.github.jonnyfrick.musicbootcamp.platform.MidiInputPort
 import io.github.jonnyfrick.musicbootcamp.platform.MidiOutputPort
 import io.github.jonnyfrick.musicbootcamp.platform.PlatformServices
@@ -59,6 +60,7 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.time.Duration
+import kotlin.time.TimeSource
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
@@ -191,14 +193,24 @@ class AppController(
             setupNames = repository.setupNames()
             refreshDevices()
             ready = true
+            // The piano's samples: decoded in the background, the exercise's range first; until
+            // then its notes are synthetic.
+            scope.launch {
+                val started = TimeSource.Monotonic.markNow()
+                runCatching {
+                    withContext(Dispatchers.Default) {
+                        Instruments.load(settings.lowLimit..settings.highLimit, services.audioDecoder ?: { decodeFlac(it) })
+                    }
+                }
+                pianoSampled = Instruments.isPianoSampled
+                samplesLoadedIn = started.elapsedNow()
+            }
         }
         launchSafely { services.midi.devicesChanged.collect { onMidiDevicesChanged() } }
-        // The piano's samples: decoded in the background; until then its notes are synthetic.
-        scope.launch {
-            runCatching { withContext(Dispatchers.Default) { Instruments.load() } }
-            pianoSampled = Instruments.isPianoSampled
-        }
     }
+
+    /** How long decoding all the piano's samples took (logged with recordings). */
+    private var samplesLoadedIn: Duration? = null
 
     /**
      * A MIDI device was plugged in or removed: update the lists and say what changed. A keyboard
@@ -359,6 +371,7 @@ class AppController(
             "detectionParameters" to tuning.detectionParameters.toJson(),
             "voices" to settings.mode.voices.toString(),
             "instrument" to preferences.instrument.name,
+            "pianoSamplesLoadedMillis" to (samplesLoadedIn?.inWholeMilliseconds?.toString() ?: "not yet"),
             "octavesCountAsCorrect" to preferences.octavesCountAsCorrect.toString(),
             "range" to "${settings.lowLimit}..${settings.highLimit}",
             "chordDetectionParameters" to tuning.chordParameters(settings.mode.voices).toJson(),

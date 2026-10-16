@@ -369,6 +369,10 @@ several voices).
     1.1 s per step). The gate's windows now add the output's `bufferedTime`.
   - A run started while the samples were still being decoded (seconds, in a phone's browser)
     sounded synthetic throughout: `SwitchingSynth` moves to the sampled piano from the next note.
+    The samples around the exercise's range are decoded first (about a third) and used at once,
+    and browsers decode with their own native decoder (`PlatformServices.audioDecoder`): all 30
+    in 0.19 s on a Mac; the common Kotlin decoder, running as WebAssembly, is the fallback.
+    Recordings log `pianoSamplesLoadedMillis`.
 - **Storage:** setups in the app's private files; recordings in
   `Android/data/io.github.jonnyfrick.musicbootcamp/files/recordings`, reachable over USB.
 - **Lifecycle:** rotating or resizing keeps the activity (`configChanges`), so an exercise keeps

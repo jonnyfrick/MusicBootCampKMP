@@ -58,6 +58,8 @@ class PracticeRunner(
     private val input: Flow<MidiMessage>,
     random: RandomSource = KotlinRandomSource(),
     lateAnswerTolerance: Duration = Duration.ZERO,
+    /** An answer with the right pitch classes counts as the given one, in whatever octave (see [PracticeSession]). */
+    octavesCountAsCorrect: Boolean = false,
     /** Ends the run after this many notes (the last one is still evaluated); null = until stopped. */
     private val maxSteps: Int? = null,
     /** Called on the session dispatcher after every step, e.g. to log it. */
@@ -72,7 +74,7 @@ class PracticeRunner(
     private val beforeFirstStep: suspend () -> Unit = {},
     private val sessionDispatcher: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1),
 ) {
-    private val session = PracticeSession(settings, memory, random, output)
+    private val session = PracticeSession(settings, memory, random, octavesCountAsCorrect, output)
     private val _status = MutableStateFlow(PracticeStatus())
     val status: StateFlow<PracticeStatus> = _status.asStateFlow()
 

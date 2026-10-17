@@ -153,6 +153,9 @@ class AppController(
 
     /** The chords given lately, for the chord recognition (read from the audio thread). */
     private val expectedChords = MutableStateFlow<List<List<Int>>>(emptyList())
+
+    /** How long the app's own sound output plays behind (with the microphone, set when it opens). */
+    private var outputDelay = Duration.ZERO
     /** The notes the player struck last (MIDI or recognised), written where the exercise runs. */
     private val playedNotes = MutableStateFlow<List<Int>>(emptyList())
 
@@ -365,6 +368,7 @@ class AppController(
 
         // Learned sequences are saved when the exercise stops; no background save may touch them meanwhile.
         saveJob?.cancel()
+        outputDelay = Duration.ZERO
         val input = runCatching { if (microphone) openMicrophoneInput(settings) else openMidiInput() }.getOrElse {
             closePorts()
             message = text(Res.string.msg_open_input_failed, it.toUiText())
@@ -384,6 +388,7 @@ class AppController(
             "instrument" to preferences.instrument.name,
             "pianoSamplesLoadedMillis" to (samplesLoadedIn?.inWholeMilliseconds?.toString() ?: "not yet"),
             "octavesCountAsCorrect" to preferences.octavesCountAsCorrect.toString(),
+            "outputDelayMillis" to outputDelay.inWholeMilliseconds.toString(),
             "range" to "${settings.lowLimit}..${settings.highLimit}",
             "chordDetectionParameters" to tuning.chordParameters(settings.mode.voices).toJson(),
         )
@@ -400,6 +405,8 @@ class AppController(
             lateAnswerTolerance = lateAnswerTolerance,
             // Octave errors of the recognition are far more common than of the player.
             octavesCountAsCorrect = microphone && preferences.octavesCountAsCorrect,
+            // The player hears each note only once the output has played it.
+            reactionTime = PracticeRunner.REACTION_TIME + outputDelay,
             maxSteps = optimizationSteps,
             onStep = { step ->
                 recorder?.step(step)
@@ -478,7 +485,8 @@ class AppController(
         val removeOwnSound = if (voices > 1) chordParameters.strokes.echoCancellation else parameters.echoCancellation
         val rendered = if (preferences.usesHeadphones || !removeOwnSound) null else openRenderedOutput(audio.sampleRate)
         val midiOutput = rendered ?: openOutput()
-        val ownSound = if (preferences.usesHeadphones) null else OwnSoundGate(midiOutput, outputDelay = rendered?.bufferedTime ?: Duration.ZERO)
+        outputDelay = rendered?.bufferedTime ?: Duration.ZERO
+        val ownSound = if (preferences.usesHeadphones) null else OwnSoundGate(midiOutput, outputDelay = outputDelay)
         gate = ownSound
         // The tolerance counts from the key stroke; the note arrives only once it is recognised.
         // A chord is decided only after its analysis window.

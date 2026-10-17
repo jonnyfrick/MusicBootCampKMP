@@ -420,6 +420,17 @@ several voices).
     (`ownAttackSettleHops`; 2 and 4 replay the same, 4 broke the 0.1 s response of late answers,
     6 lost hits). Replay of all phone recordings: one wrong note and one of the app's notes fewer,
     nothing worse. Test: `EchoCancellationTest.aStrokeTogetherWithTheAppsAttackGetsItsOwnPitch`.
+  - In the Android app the app's own note, heard back 0.49 s after its step began, answered that
+    step; the player's real answer, 0.2 s into the next step, then answered the next one wrongly,
+    and every later answer counted for the step after its own (6 wrong in a row). What is
+    recognised sooner after a step began than the player can have reacted to its note (0.3 s plus
+    the output's buffer: they hear it only once it has played) now answers only older steps, and
+    the current step's own notes are then the app's echo and answer nothing
+    (`PracticeRunner.reactionTime`, `PracticeSession.onMidiInput(beforeReaction)`). In-time answers
+    are unchanged, as no one answers a note before hearing it. Tests:
+    `LateAnswerTest.theRealAnswerToAStepAnsweredByTheAppsEchoDoesNotShiftLaterAnswers`,
+    `aNoteHeardBeforeAnyoneCanReactStillAnswersTheStepBefore`. The recording's header now holds
+    `outputDelayMillis`, and the replay's own-sound gate works like the app's (attack windows).
 - **Storage:** setups in the app's private files; recordings in
   `Android/data/io.github.jonnyfrick.musicbootcamp/files/recordings`, reachable over USB.
 - **Lifecycle:** rotating or resizing keeps the activity (`configChanges`), so an exercise keeps

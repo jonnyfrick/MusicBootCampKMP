@@ -22,6 +22,9 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 
 /** Live figures of a running exercise, for the UI. */
 data class PracticeStatus(
@@ -73,12 +76,20 @@ class PracticeRunner(
      */
     private val beforeFirstStep: suspend () -> Unit = {},
     private val sessionDispatcher: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1),
+    /**
+     * With late answers: what is recognised sooner after a step began answers only older steps,
+     * as the player cannot have heard its note yet; add the output's buffer (see [REACTION_TIME]).
+     */
+    private val reactionTime: Duration = REACTION_TIME,
+    /** For when a step began. */
+    private val timeSource: TimeSource = TimeSource.Monotonic,
 ) {
     private val session = PracticeSession(settings, memory, random, octavesCountAsCorrect, output)
     private val _status = MutableStateFlow(PracticeStatus())
     val status: StateFlow<PracticeStatus> = _status.asStateFlow()
 
     private val tolerance = lateAnswerTolerance
+    private var stepStarted: TimeMark? = null
 
     private var jobs: List<Job> = emptyList()
 
@@ -87,7 +98,10 @@ class PracticeRunner(
         _status.value = PracticeStatus(running = true)
         val inputJob = scope.launch(sessionDispatcher) {
             input.collect { message ->
-                session.onMidiInput(message).forEach(::report)
+                // With late answers: what is heard before the player can have reacted to the
+                // current note answers an older one (see PracticeSession.onMidiInput).
+                val early = tolerance > Duration.ZERO && stepStarted?.let { it.elapsedNow() < reactionTime } == true
+                session.onMidiInput(message, beforeReaction = early).forEach(::report)
                 publishVerdicts()
             }
         }
@@ -111,6 +125,7 @@ class PracticeRunner(
                 }
                 given++
                 val result = session.step(deferEvaluation = tolerance > Duration.ZERO)
+                stepStarted = timeSource.markNow()
                 result.startedNotes.forEach { note ->
                     launch {
                         delay(settings.noteDurationMillis)
@@ -140,8 +155,14 @@ class PracticeRunner(
         _status.update { it.copy(running = false) }
     }
 
-    private companion object {
-        const val END_POLL_MILLIS = 20L
+    companion object {
+        private const val END_POLL_MILLIS = 20L
+
+        /**
+         * The shortest time from a note starting to an answer to it being recognised: the player
+         * hears it (after the output's buffer), reacts, and the recognition confirms the note.
+         */
+        val REACTION_TIME = 300.milliseconds
     }
 
     private fun report(evaluation: Evaluation) {

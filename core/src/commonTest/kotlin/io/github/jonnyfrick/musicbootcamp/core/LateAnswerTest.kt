@@ -141,6 +141,37 @@ class LateAnswerTest {
     }
 
     @Test
+    fun theRealAnswerToAStepAnsweredByTheAppsEchoDoesNotShiftLaterAnswers() {
+        // Found in the Android app: the app's own note, heard back, answered its step; the player's
+        // real (late) answer, 0.2 s into the next step, then answered that one wrongly, and every
+        // later answer counted for the step after its own (6 wrong in a row).
+        val session = PracticeSession(mono, LearnedSequences(), KotlinRandomSource(Random(3)), octavesCountAsCorrect = true) { }
+        val first = session.step(deferEvaluation = true).given.single()
+        session.onMidiInput(key(first))
+        val echoed = session.step(deferEvaluation = true).given.single()
+        session.onMidiInput(key(echoed)) // the app's echo
+        val third = session.step(deferEvaluation = true)
+        assertEquals(true, third.previousCorrect)
+
+        assertEquals(emptyList(), session.onMidiInput(key(echoed), beforeReaction = true), "the player's real answer, ignored")
+        session.onMidiInput(key(third.given.single()))
+        val fourth = session.step(deferEvaluation = true)
+        assertEquals(true, fourth.previousCorrect, "the next step keeps its own answer")
+        session.onMidiInput(key(fourth.given.single()))
+        assertEquals(true, session.step(deferEvaluation = true).previousCorrect)
+    }
+
+    @Test
+    fun aNoteHeardBeforeAnyoneCanReactStillAnswersTheStepBefore() {
+        val session = PracticeSession(mono, LearnedSequences(), KotlinRandomSource(Random(3))) { }
+        val given = List(2) { session.step(deferEvaluation = true).given.single() }
+        assertEquals(emptyList(), session.onMidiInput(key(given[1]), beforeReaction = true), "the app's echo of the current note")
+        assertEquals(listOf(Evaluation(true, false)), session.onMidiInput(key(given[0]), beforeReaction = true), "a late answer")
+        session.onMidiInput(key(given[1]))
+        assertEquals(true, session.step(deferEvaluation = true).previousCorrect)
+    }
+
+    @Test
     fun withOctavesCountingAsCorrectALateAnswerMayBeAnOctaveOff() {
         val session = PracticeSession(mono, LearnedSequences(), KotlinRandomSource(Random(3)), octavesCountAsCorrect = true) { }
         val given = List(2) { session.step(deferEvaluation = true).given.single() }
@@ -207,6 +238,7 @@ class LateAnswerTest {
             lateAnswerTolerance = 560.milliseconds, // 500 ms + detection
             maxSteps = 8,
             sessionDispatcher = StandardTestDispatcher(testScheduler),
+            timeSource = testScheduler.timeSource,
         )
         runner.start()
         runCurrent()
@@ -232,6 +264,7 @@ class LateAnswerTest {
             random = KotlinRandomSource(Random(3)),
             lateAnswerTolerance = 150.milliseconds,
             sessionDispatcher = StandardTestDispatcher(testScheduler),
+            timeSource = testScheduler.timeSource,
         )
         runner.start()
         runCurrent() // first step at 0 ms: note 60
@@ -259,6 +292,7 @@ class LateAnswerTest {
             lateAnswerTolerance = 150.milliseconds,
             maxSteps = 3,
             sessionDispatcher = StandardTestDispatcher(testScheduler),
+            timeSource = testScheduler.timeSource,
         )
         runner.start()
         runCurrent()
@@ -287,6 +321,7 @@ class LateAnswerTest {
             lateAnswerTolerance = 150.milliseconds,
             maxSteps = 2,
             sessionDispatcher = StandardTestDispatcher(testScheduler),
+            timeSource = testScheduler.timeSource,
         )
         runner.start()
         runCurrent()

@@ -158,10 +158,16 @@ finds its way by the texts on screen and runs an exercise against a fake MIDI sy
   without tolerance, and keys that do not complete a chord count as a wrong answer when the
   step's time is over, without shifting later answers. Tests: `LateAnswerTest`.
 - **Octaves count as correct with the microphone** (Settings → Input, on by default): a
-  recognised note or chord with exactly the pitch classes of one of the last given ones counts as
-  that one (`matchIgnoringOctaves`). The recognition confuses octaves far more often than the
-  player (weak bass fundamentals of real pianos; a unison heard with its octave), so this removes
-  many false mistakes; playing in the wrong octave is no longer caught. MIDI input is unchanged.
+  recognised note or chord with exactly the pitch classes of the step it answers counts as that
+  step's (`PracticeSession.octavesCountAsCorrect`). The recognition confuses octaves far more often
+  than the player (weak bass fundamentals of real pianos; a unison heard with its octave), so this
+  removes many false mistakes; playing in the wrong octave is no longer caught. MIDI input is
+  unchanged. At first the app moved a note to the octave of any of the last given steps before the
+  exercise saw it; a late answer a semitone off (G for G#) then became the exact answer of the
+  current step (its G an octave up), the step before counted as missed, and every later answer
+  counted for the step after its own (4 wrong in a run played right but late). Now only the notes
+  really played may skip to a later open step. Test:
+  `LateAnswerTest.aWrongLateNoteInTheOctaveOfTheCurrentStepDoesNotShiftLaterAnswers`.
 - **The microphone is the default input** (Settings → Input): most players sit at an acoustic
   piano, and it needs no device. Plugging in (or connecting) a MIDI keyboard switches the input
   to it; without a microphone the keyboard is the input from the start.

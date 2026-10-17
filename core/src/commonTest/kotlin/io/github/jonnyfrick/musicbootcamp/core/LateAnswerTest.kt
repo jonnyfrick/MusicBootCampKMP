@@ -125,6 +125,35 @@ class LateAnswerTest {
     }
 
     @Test
+    fun aWrongLateNoteInTheOctaveOfTheCurrentStepDoesNotShiftLaterAnswers() {
+        // Found in a phone's browser: a late answer a semitone off (G for G#) was moved to the
+        // octave of the current step's G and so became its exact answer; the step before counted
+        // as missed, and every later answer then counted for the step after its own (4 wrong).
+        val session = PracticeSession(mono, LearnedSequences(), KotlinRandomSource(Random(3)), octavesCountAsCorrect = true) { }
+        val given = List(2) { session.step(deferEvaluation = true).given.single() }
+        val wrong = given[1] + if (given[1] + 12 <= 72) 12 else -12
+        assertEquals(listOf(Evaluation(false, false)), session.onMidiInput(key(wrong)), "a wrong answer to the first step")
+        assertEquals(emptyList(), session.onMidiInput(key(given[1])), "the second step keeps its own answer")
+        val third = session.step(deferEvaluation = true)
+        assertEquals(true, third.previousCorrect)
+        session.onMidiInput(key(third.given.single()))
+        assertEquals(true, session.step(deferEvaluation = true).previousCorrect)
+    }
+
+    @Test
+    fun withOctavesCountingAsCorrectALateAnswerMayBeAnOctaveOff() {
+        val session = PracticeSession(mono, LearnedSequences(), KotlinRandomSource(Random(3)), octavesCountAsCorrect = true) { }
+        val given = List(2) { session.step(deferEvaluation = true).given.single() }
+        val octave = given[0] + if (given[0] + 12 <= 72) 12 else -12
+        assertEquals(listOf(Evaluation(true, false)), session.onMidiInput(key(octave)))
+        session.onMidiInput(key(given[1] - 12))
+        assertEquals(true, session.step(deferEvaluation = true).previousCorrect, "the current step too")
+        val strict = PracticeSession(mono, LearnedSequences(), KotlinRandomSource(Random(3))) { }
+        repeat(2) { strict.step(deferEvaluation = true) }
+        assertEquals(listOf(Evaluation(false, false)), strict.onMidiInput(key(octave)), "off unless asked for")
+    }
+
+    @Test
     fun aStrokeJustTooLateDoesNotTakeTheNextAnswer() {
         // Found live: an answer 13 ms after its tolerance answered the next step, and every later
         // answer then counted for the step after its own.

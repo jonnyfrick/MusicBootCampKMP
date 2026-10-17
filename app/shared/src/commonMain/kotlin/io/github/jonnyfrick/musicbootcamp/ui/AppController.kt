@@ -54,7 +54,6 @@ import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import io.github.jonnyfrick.musicbootcamp.core.pitch.toNoteOns
 import io.github.jonnyfrick.musicbootcamp.core.pitch.detectedChords
-import io.github.jonnyfrick.musicbootcamp.core.pitch.matchIgnoringOctaves
 import io.github.jonnyfrick.musicbootcamp.core.pitch.LearnedTemplates
 import io.github.jonnyfrick.musicbootcamp.core.pitch.ChordDetectionParameters
 import io.github.jonnyfrick.musicbootcamp.core.pitch.PianoCalibration
@@ -399,6 +398,8 @@ class AppController(
                 if (message.isNoteOn) playedNotes.value = (playedNotes.value + message.data1).takeLast(PLAYED_NOTES)
             },
             lateAnswerTolerance = lateAnswerTolerance,
+            // Octave errors of the recognition are far more common than of the player.
+            octavesCountAsCorrect = microphone && preferences.octavesCountAsCorrect,
             maxSteps = optimizationSteps,
             onStep = { step ->
                 recorder?.step(step)
@@ -514,7 +515,6 @@ class AppController(
                 .onEach { recording?.detectedChord(it) }
                 .flowOn(Dispatchers.Default)
                 .filter { chord -> chord.ownSoundRemoved || ownSound?.acceptsChord(chord.notes) ?: true }
-                .map { chord -> chord.copy(notes = octaveMatch(chord.notes) ?: chord.notes) }
                 .flatMapConcat { chord -> chord.toNoteOns(voices).asFlow() }
                 .onEach { recording?.accepted(it) }
         }
@@ -528,13 +528,9 @@ class AppController(
             .flowOn(Dispatchers.Default)
             // Evaluated where the exercise runs, which is also where the gate sees the notes played.
             .filter { note -> note.midiNote in 0..127 && (note.ownSoundRemoved || ownSound?.accepts(note.toNoteOn()) ?: true) }
-            .map { note -> note.copy(midiNote = octaveMatch(listOf(note.midiNote))?.first() ?: note.midiNote).toNoteOn() }
+            .map { note -> note.toNoteOn() }
             .onEach { recording?.accepted(it) }
     }
-
-    /** With octaves counting as correct: the given chord (or note) these notes are in another octave. */
-    private fun octaveMatch(notes: List<Int>): List<Int>? =
-        if (preferences.octavesCountAsCorrect) matchIgnoringOctaves(notes, expectedChords.value) else null
 
     /** Writes the header and the log of a recorded session; the audio has stopped by now. */
     private suspend fun finishRecording() {

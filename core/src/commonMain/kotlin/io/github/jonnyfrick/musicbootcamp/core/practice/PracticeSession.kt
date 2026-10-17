@@ -54,6 +54,12 @@ class PracticeSession(
     private val settings: PracticeSettings,
     private val memory: LearnedSequences,
     random: RandomSource,
+    /**
+     * An answer with the pitch classes of the step it answers counts as that step's notes, in
+     * whatever octave (microphone input). Only for that step: an answer is never moved to the
+     * octave of another step, so a wrong note cannot become the exact answer of a later one.
+     */
+    private val octavesCountAsCorrect: Boolean = false,
     private val output: MidiOutput,
 ) {
     init {
@@ -110,7 +116,7 @@ class PracticeSession(
     fun onMidiInput(message: MidiMessage): List<Evaluation> {
         if (!message.isNoteOn) return emptyList()
         if (!deferring) {
-            corrector.addRecorded(message.data1)
+            corrector.addRecorded(inOctaveOf(message.data1, engine.positions()))
             val verdict = corrector.verdict()?.let { StepVerdict(steps - 1, it) }
             if (steps > 0 && verdict != null && verdict != announced) {
                 verdicts += verdict
@@ -139,10 +145,12 @@ class PracticeSession(
 
         if (waiting.isEmpty()) return emptyList() // only the first answer of a step counts
         val chord = answer.distinct().sorted()
+        // Only the notes really played may skip to a later step, never their octave equivalent.
         val matching = waiting.firstOrNull { it.chord == chord }
         // Just too late for its own step: it must not take the answer of the next one.
-        if (matching == null && chord in missedLately) {
-            missedLately.remove(chord)
+        val tooLate = missedLately.firstOrNull { it == chord || octavesCountAsCorrect && sameClasses(it, chord) }
+        if (matching == null && tooLate != null) {
+            missedLately.remove(tooLate)
             return emptyList()
         }
         val target = matching ?: waiting.first()
@@ -150,10 +158,11 @@ class PracticeSession(
             if (step === target) break
             step.resolved = true // missed
         }
-        target.answer = answer
+        val counted = if (octavesCountAsCorrect && sameClasses(answer, target.given)) target.given else answer
+        target.answer = counted
         target.resolved = true
         return evaluateResolved().also {
-            Corrector.judge(settings.mode, target.given, answer)?.let { verdicts += StepVerdict(target.number, it) }
+            Corrector.judge(settings.mode, target.given, counted)?.let { verdicts += StepVerdict(target.number, it) }
         }
     }
 
@@ -271,6 +280,12 @@ class PracticeSession(
         }
         return Evaluation(correct, stored)
     }
+
+    /** With [octavesCountAsCorrect]: [note] moved to the octave of the given note with its pitch class, if any. */
+    private fun inOctaveOf(note: Int, given: List<Int>): Int =
+        if (octavesCountAsCorrect) given.firstOrNull { (it - note).mod(12) == 0 } ?: note else note
+
+    private fun sameClasses(a: List<Int>, b: List<Int>) = a.map { it.mod(12) }.toSet() == b.map { it.mod(12) }.toSet()
 
     /** Hands the given note(s) of a new step to the corrector. */
     private fun startGiven(given: List<Int>) {

@@ -115,6 +115,11 @@
     <string name="settings_input">Eingabe</string>
     <string name="settings_midi">MIDI-Geräte</string>
     <string name="settings_tuning">Stimmung</string>
+    <string name="settings_appearance">Darstellung</string>
+    <string name="theme">Farben</string>
+    <string name="theme_system">Wie das System</string>
+    <string name="theme_light">Hell</string>
+    <string name="theme_dark">Dunkel</string>
     <string name="settings_recognition">Erkennung</string>
     <string name="settings_recognition_summary">Feinabstimmung der Mikrofon-Erkennung</string>
     <string name="input_source">Eingabe über</string>

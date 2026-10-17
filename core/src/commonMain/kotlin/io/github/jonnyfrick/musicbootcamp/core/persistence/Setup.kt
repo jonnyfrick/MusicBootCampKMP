@@ -113,6 +113,8 @@ data class AppPreferences(
     val octavesCountAsCorrect: Boolean = true,
     /** Chord recognition (microphone, several voices), per number of voices. */
     val chordDetectionParameters: Map<Int, ChordDetectionParameters> = emptyMap(),
+    /** Light or dark colours, or whatever the system uses. */
+    val theme: ThemeMode = ThemeMode.SYSTEM,
 ) {
     fun chordParameters(voices: Int): ChordDetectionParameters = chordDetectionParameters[voices] ?: ChordDetectionParameters()
 }
@@ -122,6 +124,9 @@ const val DETECTION_PARAMETERS_REVISION = 2
 
 const val DEFAULT_OPTIMIZATION_STEPS = 12
 val OPTIMIZATION_STEP_RANGE = 5..50
+
+@Serializable
+enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
 @Serializable
 enum class InputSource {

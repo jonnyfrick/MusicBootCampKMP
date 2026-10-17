@@ -1,5 +1,6 @@
 package io.github.jonnyfrick.musicbootcamp.ui
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
@@ -21,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.window.core.layout.WindowSizeClass
+import io.github.jonnyfrick.musicbootcamp.core.persistence.ThemeMode
 import io.github.jonnyfrick.musicbootcamp.platform.PlatformServices
 import io.github.jonnyfrick.musicbootcamp.resources.*
 import org.jetbrains.compose.resources.StringResource
@@ -45,7 +47,12 @@ private enum class Destination(val label: StringResource, val icon: ImageVector)
 fun App(controller: AppController) {
     LaunchedEffect(controller) { controller.load() }
 
-    AppTheme {
+    val dark = when (controller.preferences.theme) {
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+    }
+    AppTheme(dark) {
         val snackbar = remember { SnackbarHostState() }
         val message = controller.message
         LaunchedEffect(message) {

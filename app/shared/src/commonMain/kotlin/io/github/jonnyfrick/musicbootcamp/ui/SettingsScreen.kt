@@ -36,6 +36,7 @@ import io.github.jonnyfrick.musicbootcamp.core.midi.NoteNames
 import io.github.jonnyfrick.musicbootcamp.core.midi.Tuning
 import io.github.jonnyfrick.musicbootcamp.core.model.PlayerInstrument
 import io.github.jonnyfrick.musicbootcamp.core.persistence.InputSource
+import io.github.jonnyfrick.musicbootcamp.core.persistence.ThemeMode
 import io.github.jonnyfrick.musicbootcamp.platform.BUILT_IN_PIANO
 import io.github.jonnyfrick.musicbootcamp.resources.*
 import kotlinx.coroutines.launch
@@ -48,6 +49,7 @@ internal enum class SettingsPage(val title: StringResource, val icon: ImageVecto
     INPUT(Res.string.settings_input, AppIcons.Mic),
     MIDI(Res.string.settings_midi, AppIcons.Speaker),
     TUNING(Res.string.settings_tuning, AppIcons.Tune),
+    APPEARANCE(Res.string.settings_appearance, AppIcons.DarkMode),
     RECOGNITION(Res.string.settings_recognition, AppIcons.GraphicEq),
 }
 
@@ -115,6 +117,7 @@ internal fun SettingsScreen(controller: AppController, snackbar: SnackbarHostSta
                             SettingsPage.INPUT -> InputSettings(controller)
                             SettingsPage.MIDI -> MidiSettings(controller)
                             SettingsPage.TUNING -> TuningSettings(controller)
+                            SettingsPage.APPEARANCE -> AppearanceSettings(controller)
                             SettingsPage.RECOGNITION -> RecognitionSettings(controller)
                         }
                     }
@@ -134,7 +137,29 @@ private fun summary(controller: AppController, page: SettingsPage): String? {
             else inputLabel(preferences.inputSource)
         SettingsPage.MIDI -> listOfNotNull(selectedInput(controller), selectedOutput(controller)).joinToString(" → ").ifEmpty { null }
         SettingsPage.TUNING -> "A = ${stringResource(Res.string.value_hz, preferences.referenceAHz.toString())}"
+        SettingsPage.APPEARANCE -> themeLabel(preferences.theme)
         SettingsPage.RECOGNITION -> stringResource(Res.string.settings_recognition_summary)
+    }
+}
+
+@Composable
+private fun themeLabel(theme: ThemeMode) = stringResource(
+    when (theme) {
+        ThemeMode.SYSTEM -> Res.string.theme_system
+        ThemeMode.LIGHT -> Res.string.theme_light
+        ThemeMode.DARK -> Res.string.theme_dark
+    },
+)
+
+@Composable
+private fun AppearanceSettings(controller: AppController) {
+    SettingsSection(stringResource(Res.string.theme)) {
+        RadioSetting(
+            options = ThemeMode.entries,
+            selected = controller.preferences.theme,
+            label = { themeLabel(it) },
+            onSelect = controller::setTheme,
+        )
     }
 }
 

@@ -21,6 +21,7 @@ import io.github.jonnyfrick.musicbootcamp.core.midi.MidiMessage
 import io.github.jonnyfrick.musicbootcamp.core.model.PracticeMode
 import io.github.jonnyfrick.musicbootcamp.core.persistence.InputSource
 import io.github.jonnyfrick.musicbootcamp.core.persistence.OPTIMIZATION_STEP_RANGE
+import io.github.jonnyfrick.musicbootcamp.core.persistence.ThemeMode
 import io.github.jonnyfrick.musicbootcamp.core.pitch.AudioBlock
 import io.github.jonnyfrick.musicbootcamp.core.pitch.DetectedNote
 import io.github.jonnyfrick.musicbootcamp.core.pitch.DetectionParameters
@@ -808,6 +809,7 @@ class AppController(
         private set
 
     fun setShowGivenNotes(show: Boolean) = updatePreferences { it.copy(showGivenNotes = show) }
+    fun setTheme(theme: ThemeMode) = updatePreferences { it.copy(theme = theme) }
 
     fun selectInputDevice(name: String) {
         val wasTesting = midiTesting

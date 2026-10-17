@@ -222,6 +222,25 @@ class ScreenshotTest {
     }
 
     @Test
+    fun phoneDark() {
+        val midi = FakeMidi()
+        val preferences = """{"lastSetup":"Demo","inputSource":"MIDI","theme":"DARK","detectionParametersRevision":2}"""
+        app(width = 412, height = 915, services(midi, store("Demo", "settings_mono.xml", preferences))) {
+            snapshot("phone-dark-1-practice")
+            clickIcon("Start")
+            wait(500)
+            snapshot("phone-dark-2-running")
+            clickIcon("Stop")
+            wait(300)
+            click("Settings")
+            click("Appearance")
+            snapshot("phone-dark-3-settings-appearance")
+            click("Light")
+            onNodeWithText("Like the system").assertExists()
+        }
+    }
+
+    @Test
     fun aReleaseBuildHasNoDeveloperTools() {
         // Even if a debug build stored the optimization mode on this device.
         val preferences = """{"lastSetup":"Demo","inputSource":"MICROPHONE","optimizationMode":true,"detectionParametersRevision":1}"""

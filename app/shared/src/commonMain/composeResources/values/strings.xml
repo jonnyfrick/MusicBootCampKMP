@@ -115,6 +115,11 @@
     <string name="settings_input">Input</string>
     <string name="settings_midi">MIDI devices</string>
     <string name="settings_tuning">Tuning</string>
+    <string name="settings_appearance">Appearance</string>
+    <string name="theme">Colours</string>
+    <string name="theme_system">Like the system</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
     <string name="settings_recognition">Recognition</string>
     <string name="settings_recognition_summary">Tuning the microphone recognition</string>
     <string name="input_source">Play on</string>

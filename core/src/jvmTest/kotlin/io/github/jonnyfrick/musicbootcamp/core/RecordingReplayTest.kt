@@ -281,8 +281,12 @@ private class Analysis(private val wavFile: File, output: File? = null, private 
                 )
             }
         }
-        // The own-sound gate ignores what could all be the app's own notes.
-        return detections.filter { d -> d.ownSoundRemoved || usesHeadphones || !d.notes.all { appSounding(it, d.decidedAt) } }
+        // The own-sound gate ignores what could all be the app's own attack (as OwnSoundGate).
+        return detections.filter { d ->
+            val single = !chordPath
+            usesHeadphones || d.ownSoundRemoved && (!single || gateBypassesRemoved) ||
+                !d.notes.all { struckWithin(it, d.decidedAt, if (single) NOTE_ATTACK_MILLIS else CHORD_ATTACK_MILLIS) }
+        }
     }
 
     private fun <T> blocks(process: (FloatArray, FloatArray?) -> List<T>): List<T> {
@@ -298,22 +302,18 @@ private class Analysis(private val wavFile: File, output: File? = null, private 
 
     private val usesHeadphones = log?.info?.get("usesHeadphones") == "true"
 
-    /** Like OwnSoundGate: the app sounds the note (or an octave of it), or released it within 200 ms. */
-    private fun appSounding(note: Int, sample: Long): Boolean {
-        val release = sampleRate / 5
-        val lastOn = mutableMapOf<Int, Long>()
-        val lastOff = mutableMapOf<Int, Long>()
-        for (event in events) {
-            if (event.sample > sample) break
-            when (event.type) {
-                RecordingEventType.APP_NOTE_ON -> event.notes.forEach { lastOn[it] = event.sample; lastOff.remove(it) }
-                // Only the first note-off ends the note (the app sends another one at the next step).
-                RecordingEventType.APP_NOTE_OFF -> event.notes.forEach { if (it in lastOn && it !in lastOff) lastOff[it] = event.sample }
-                else -> Unit
-            }
-        }
-        return lastOn.keys.any { own ->
-            (note - own) % 12 == 0 && (lastOff[own]?.let { sample - it < release } ?: true)
+    /** Single notes the app's sound was removed from pass the gate unchecked, as in the app (`-Pmusicbootcamp.gateBypass=false`: they do not). */
+    private val gateBypassesRemoved = System.getProperty("musicbootcamp.gateBypass") != "false"
+
+    /** How long the output buffered ahead (logged since October 17; before, about a browser's or an Android track's). */
+    private val outputDelayMillis = log?.info?.get("outputDelayMillis")?.toDoubleOrNull() ?: 200.0
+
+    /** Like OwnSoundGate: the app struck the note (or an octave of it) within [millis] plus the output's delay before [sample]. */
+    private fun struckWithin(note: Int, sample: Long, millis: Int): Boolean {
+        val window = ((millis + outputDelayMillis) * sampleRate / 1000).toLong()
+        return events.any { event ->
+            event.type == RecordingEventType.APP_NOTE_ON && event.sample in sample - window..sample &&
+                event.notes.any { (note - it) % 12 == 0 }
         }
     }
 
@@ -579,6 +579,8 @@ private class Analysis(private val wavFile: File, output: File? = null, private 
 
     private companion object {
         const val BLOCK = 512
+        const val NOTE_ATTACK_MILLIS = 450
+        const val CHORD_ATTACK_MILLIS = 900
         const val HOP = 512
         const val BINS = 240
         const val LOW_HZ = 50.0

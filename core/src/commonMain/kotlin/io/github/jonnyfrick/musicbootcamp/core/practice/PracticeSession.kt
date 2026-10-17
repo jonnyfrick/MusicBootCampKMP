@@ -112,8 +112,13 @@ class PracticeSession(
      * chord recognition sends them — goes to the oldest open step; or, if it is exactly the chord of
      * a later open step, to that one, and the older ones count as missed (so a skipped step or a
      * false stroke does not shift all later answers). Returns the evaluations this completes.
+     *
+     * [beforeReaction]: the note came too soon after the current step began to answer it (the
+     * player cannot have heard that note yet), so it only answers older steps, and is ignored if
+     * they are done (e.g. the app's own echo answered one, and this is the player's real answer);
+     * then the current step's own notes are the app's echo and answer nothing.
      */
-    fun onMidiInput(message: MidiMessage): List<Evaluation> {
+    fun onMidiInput(message: MidiMessage, beforeReaction: Boolean = false): List<Evaluation> {
         if (!message.isNoteOn) return emptyList()
         if (!deferring) {
             corrector.addRecorded(inOctaveOf(message.data1, engine.positions()))
@@ -132,7 +137,8 @@ class PracticeSession(
         }
         repeatsToSkip = 0
         chordBuffer += message.data1
-        val waiting = open.filter { !it.resolved }
+        // Heard before anyone can have reacted to the current note: it answers an older step, if any.
+        val waiting = open.filter { !it.resolved && !(beforeReaction && it === open.last()) }
         if (chordBuffer.size < settings.mode.voices) {
             // On a keyboard a unison is one key: it answers a step that gave one, as without tolerance.
             val unison = waiting.firstOrNull { it.chord == chordBuffer.toList() } ?: return emptyList()
@@ -145,6 +151,11 @@ class PracticeSession(
 
         if (waiting.isEmpty()) return emptyList() // only the first answer of a step counts
         val chord = answer.distinct().sorted()
+        // So soon, the current step's own notes are the app's echo, no answer to an older step.
+        val current = open.lastOrNull()
+        if (beforeReaction && current != null && (current.chord == chord || octavesCountAsCorrect && sameClasses(current.chord, chord))) {
+            return emptyList()
+        }
         // Only the notes really played may skip to a later step, never their octave equivalent.
         val matching = waiting.firstOrNull { it.chord == chord }
         // Just too late for its own step: it must not take the answer of the next one.

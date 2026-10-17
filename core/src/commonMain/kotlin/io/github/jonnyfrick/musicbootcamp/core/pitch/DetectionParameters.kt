@@ -35,6 +35,13 @@ data class DetectionParameters(
      */
     val ownPitchShare: Double = 0.5,
     /**
+     * Over the app's sound, a stroke that does not raise the total level by [rawRise] still counts
+     * if this share of the power is in new partials: frequencies that held [newPartialRise] times
+     * less just before and that the app's predicted sound does not explain. 0 = off.
+     */
+    val newPartialShare: Double = 0.3,
+    val newPartialRise: Double = 4.0,
+    /**
      * Before the app's sound can be removed (or where it is too quiet to measure), a stroke must be
      * this many times louder than the microphone usually is while the app plays; 0 = off (then
      * only the app's current note is ignored meanwhile, as without echo cancellation).

@@ -391,6 +391,22 @@ several voices).
     app's own attacks through. Stored parameters reset (`DETECTION_PARAMETERS_REVISION` 2).
     Replaying all 71 phone recordings: 4 more hits (490 → 494), no other result changed. Test:
     `EchoCancellationTest.aLateAnswerOnTheAppsNextAttackCountsIfItIsAnotherPitch`.
+  - A player answering every note late, into the app's next one, was hardly heard (7 of 12,
+    all played right). The loudspeaker's gains were learned only in the player's pauses, which
+    never came: the app's sound was not removed for 8 s, and in a band where the player's ringing
+    notes had leaked into the learning (1.8 kHz, 7 times the average) the app's attack was
+    predicted louder than all the microphone heard, hiding the answer struck with it. And over the
+    app's ringing note a stroke hardly raised the total level (1.33 instead of 1.5 times).
+    Now the gains come from the app's attacks too: what the microphone gained from just before to
+    just after an attack against what the reference gained; a note ringing on is in both and drops
+    out (`EchoEstimator.measureAttackGains`). After three attacks they make the estimate ready and
+    cap the gains learned in pauses (at 4 times). And a stroke counts over the app's sound if 30 %
+    of the power is in new partials, frequencies that held 4 times less just before and that the
+    app's predicted sound does not explain (`NoteTracker.newPartials`, `newPartialShare`,
+    `newPartialRise`). Replaying all 77 phone recordings: 507 → 522 hits, 139 → 124 missed; two
+    more of the app's notes taken for the player's and one extra note, nearly all in early
+    recordings with two voices. Test: `EchoCancellationTest.aPlayerAlwaysAnsweringIntoTheNextNoteIsHeard`
+    (10 of 15 answers before, 14 now).
 - **Storage:** setups in the app's private files; recordings in
   `Android/data/io.github.jonnyfrick.musicbootcamp/files/recordings`, reachable over USB.
 - **Lifecycle:** rotating or resizing keeps the activity (`configChanges`), so an exercise keeps

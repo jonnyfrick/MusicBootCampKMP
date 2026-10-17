@@ -190,4 +190,33 @@ class EchoCancellationTest {
         }
         assertEquals(emptyList(), own.map { it.midiNote to it.seconds() }, found)
     }
+
+    @Test
+    fun aStrokeTogetherWithTheAppsAttackGetsItsOwnPitch() {
+        // Found in a phone's browser: a late G# struck just as the echo of the app's next note (G
+        // an octave up) arrived was read as G: the pitch was taken before the prediction of the
+        // app's note had caught up. Such a stroke now waits a little longer for its pitch.
+        val lead = 0.5
+        val delay = 7_940
+        val reference = FloatArray((17.5 * sampleRate).toInt())
+        appNotes.forEachIndexed { step, note ->
+            addPianoStroke(reference, note, startSeconds = lead + step, durationSeconds = 0.5, seed = 1000 + step)
+        }
+        val microphone = roomEcho(reference, delaySamples = delay, gain = 1.0)
+        // From the sixth step on: a semitone above the app's next note an octave down, struck with its echo.
+        val answers = (5 until appNotes.size).map { step -> appNotes[step] - 11 to lead + step + delay.toDouble() / sampleRate }
+        answers.forEach { (note, time) -> addPianoStroke(microphone, note, startSeconds = time, durationSeconds = 0.4, seed = 7 * note) }
+
+        fun heard(parameters: DetectionParameters): Int {
+            val tracker = NoteTracker(sampleRate, parameters = parameters)
+            val notes = microphone.indices.chunked(480).flatMap { indices ->
+                val range = indices.first()..indices.last()
+                tracker.process(microphone.sliceArray(range), reference.sliceArray(range))
+            }
+            return answers.count { (note, time) -> notes.any { it.midiNote == note && it.seconds() - time in 0.0..0.3 } }
+        }
+        val asBefore = heard(DetectionParameters(ownAttackSettleHops = 0))
+        val now = heard(DetectionParameters())
+        assertTrue(now > asBefore, "$now of ${answers.size} heard, before $asBefore")
+    }
 }

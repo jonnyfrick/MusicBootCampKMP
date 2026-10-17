@@ -413,6 +413,13 @@ several voices).
     more of the app's notes taken for the player's and one extra note, nearly all in early
     recordings with two voices. Test: `EchoCancellationTest.aPlayerAlwaysAnsweringIntoTheNextNoteIsHeard`
     (10 of 15 answers before, 14 now).
+  - A late G# struck just as the echo of the app's next note (G4) arrived was read as G: its pitch
+    was taken three hops after the onset, before the prediction of the app's note had caught up,
+    and what remained of G4's partials (multiples of 196 Hz) pulled the period to 200 Hz. A
+    stroke that comes with an attack of the app's now waits two hops more for its pitch
+    (`ownAttackSettleHops`; 2 and 4 replay the same, 4 broke the 0.1 s response of late answers,
+    6 lost hits). Replay of all phone recordings: one wrong note and one of the app's notes fewer,
+    nothing worse. Test: `EchoCancellationTest.aStrokeTogetherWithTheAppsAttackGetsItsOwnPitch`.
 - **Storage:** setups in the app's private files; recordings in
   `Android/data/io.github.jonnyfrick.musicbootcamp/files/recordings`, reachable over USB.
 - **Lifecycle:** rotating or resizing keeps the activity (`configChanges`), so an exercise keeps

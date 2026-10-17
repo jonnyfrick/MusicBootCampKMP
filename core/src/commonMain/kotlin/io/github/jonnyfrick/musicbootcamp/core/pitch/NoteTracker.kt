@@ -107,6 +107,8 @@ class NoteTracker(
     private var hopsSinceOnset = -1 // -1: no stroke being analysed
     /** The stroke stood out against the app's attack only by [DetectionParameters.ownSoundShare]. */
     private var strokeNearOwnPitch = false
+    /** Extra hops to wait before reading the pitch: the stroke came with an attack of the app's. */
+    private var extraSettle = 0
     private var hopsSinceStroke = Int.MAX_VALUE / 2
     private var hopsSinceNote = Int.MAX_VALUE / 2
     private var candidate: Int? = null
@@ -243,6 +245,9 @@ class NoteTracker(
 
         if (onset) {
             strokeNearOwnPitch = strokeLevel <= onsetRatio * strictPrevious
+            // Struck together with the app's note: until its prediction has caught up and the window
+            // holds both sounds in full, what remains of it mixes into the pitch (G# read as G under G4).
+            extraSettle = if (ownSoundRemoved && echo!!.referenceOnsetNear) parameters.ownAttackSettleHops else 0
             hopsSinceStroke = 0
             hopsSinceOnset = 0
             resetCandidate()
@@ -253,12 +258,12 @@ class NoteTracker(
         if (hopsSinceOnset < 0) return if (legato && instrument.sustained) followPitch(ownSoundRemoved) else null
         hopsSinceOnset++
 
-        if (hopsSinceOnset > giveUpHops || level < noiseGate / 2) {
+        if (hopsSinceOnset > giveUpHops + extraSettle || level < noiseGate / 2) {
             hopsSinceOnset = -1
             return null
         }
         // Wait until the whole window belongs to the new stroke (and a blown note has found its pitch).
-        if (hopsSinceOnset < settleHops) return null
+        if (hopsSinceOnset < settleHops + extraSettle) return null
 
         val ownSound = if (ownSoundRemoved) echo!!.echoPower else null
         val estimate = detector.detect(window, background, ownSound) ?: return null.also { resetCandidate() }

@@ -41,6 +41,8 @@ data class DetectionParameters(
      */
     val newPartialShare: Double = 0.3,
     val newPartialRise: Double = 4.0,
+    /** A stroke that comes with an attack of the app's sound waits this many hops more for its pitch. */
+    val ownAttackSettleHops: Int = 2,
     /**
      * Before the app's sound can be removed (or where it is too quiet to measure), a stroke must be
      * this many times louder than the microphone usually is while the app plays; 0 = off (then

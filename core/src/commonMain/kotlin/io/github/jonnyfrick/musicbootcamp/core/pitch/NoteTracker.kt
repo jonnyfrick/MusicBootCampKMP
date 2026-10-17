@@ -223,8 +223,9 @@ class NoteTracker(
         // has to raise the total level clearly.
         val rise = if (echo != null && hopsSinceNote < FOLLOW_UP_HOPS) parameters.followUpRise else parameters.rawRise
         val louder = (!ownSoundRemoved && rise == parameters.rawRise) || level > rise * (recentRawLevels.minOrNull() ?: 0.0)
-        val onset = !blocked && louder && strokeLevel >= noiseGate && strokeLevel > onsetRatio * previous &&
-            hopsSinceStroke >= REFRACTORY_HOPS
+        val stroke = !blocked && strokeLevel >= noiseGate && strokeLevel > onsetRatio * previous && hopsSinceStroke >= REFRACTORY_HOPS
+        // Over a loud note of the app, a stroke may hardly raise the total level; its new partials still show.
+        val onset = stroke && (louder || ownSoundRemoved && parameters.newPartialShare > 0 && newPartials(echo!!))
         tracedStroke = strokeLevel
         tracedBlocked = blocked
         tracedOnset = onset
@@ -284,6 +285,42 @@ class NoteTracker(
         return if (sameAttack) null else confirmed(note, candidateFrequencies.takeLast(confirmFrames).average(), ownSoundRemoved)
     }
 
+    private val newRe = DoubleArray(detector.paddedSize)
+    private val newIm = DoubleArray(detector.paddedSize)
+    private val oldRe = DoubleArray(detector.paddedSize)
+    private val oldIm = DoubleArray(detector.paddedSize)
+    private val partialBins = run {
+        val bin = sampleRate.toDouble() / detector.paddedSize
+        (NEW_PARTIAL_LOW_HZ / bin).toInt().coerceAtLeast(1) until (NEW_PARTIAL_HIGH_HZ / bin).toInt().coerceAtMost(detector.paddedSize / 2)
+    }
+
+    /**
+     * Whether the latest two hops hold much power in frequencies that the two hops before held
+     * [DetectionParameters.newPartialRise] times less of and the app's predicted sound does not
+     * explain: a new note, even where the app's note keeps the total level up. At least
+     * [DetectionParameters.newPartialShare] of the latest power must be such.
+     */
+    private fun newPartials(echo: EchoEstimator): Boolean {
+        val length = 2 * hop
+        newRe.fill(0.0); newIm.fill(0.0); oldRe.fill(0.0); oldIm.fill(0.0)
+        for (i in 0 until hop) newRe[i] = window[windowSize - hop + i].toDouble()
+        for (i in 0 until hop) newRe[hop + i] = hopBuffer[i].toDouble()
+        for (i in 0 until length) oldRe[i] = window[windowSize - hop - length + i].toDouble()
+        fft(newRe, newIm)
+        fft(oldRe, oldIm)
+        // The prediction is for a whole window; a tone's power grows with the square of the length.
+        val echoScale = (length.toDouble() / windowSize).let { it * it }
+        var total = 0.0
+        var new = 0.0
+        for (i in partialBins) {
+            val now = newRe[i] * newRe[i] + newIm[i] * newIm[i]
+            val before = oldRe[i] * oldRe[i] + oldIm[i] * oldIm[i]
+            total += now
+            new += (now - parameters.newPartialRise * maxOf(before, echoScale * echo.echoPower[i])).coerceAtLeast(0.0)
+        }
+        return total > 0.0 && new >= parameters.newPartialShare * total
+    }
+
     private fun confirmed(note: Int, frequency: Double, ownSoundRemoved: Boolean): DetectedNote {
         hopsSinceNote = 0
         lastNote = note
@@ -331,6 +368,8 @@ class NoteTracker(
         const val PLAYER_ACTIVE_HOPS = 43 // ~0.5 s
         const val SAME_ATTACK_MILLIS = 500
         const val REATTACK_DIP = 0.5
+        const val NEW_PARTIAL_LOW_HZ = 70.0
+        const val NEW_PARTIAL_HIGH_HZ = 5000.0
         const val LEGATO_FRAMES = 6 // ~70 ms: longer than the window takes to slide from one note to the next
     }
 }

@@ -38,6 +38,8 @@ import io.github.jonnyfrick.musicbootcamp.platform.MidiOutputPort
 import io.github.jonnyfrick.musicbootcamp.platform.PlatformServices
 import io.github.jonnyfrick.musicbootcamp.platform.RenderedOutputPort
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
@@ -62,6 +64,7 @@ import kotlinx.coroutines.withContext
 import kotlin.time.Duration
 import kotlin.time.TimeSource
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * UI state and actions of the app (Java: `MusicBootCampMainWindow`, `ParameterManager`
@@ -208,6 +211,9 @@ class AppController(
         }
         launchSafely { services.midi.devicesChanged.collect { onMidiDevicesChanged() } }
     }
+
+    /** Completed when the microphone of the running exercise delivers sound rather than silence. */
+    private var microphoneLive = CompletableDeferred<Unit>()
 
     /** How long decoding all the piano's samples took (logged with recordings). */
     private var samplesLoadedIn: Duration? = null
@@ -388,6 +394,13 @@ class AppController(
                 expectedChords.value = (expectedChords.value + listOf(step.given)).takeLast(EXPECTED_CHORDS)
             },
             onEvaluation = { recorder?.evaluation(it) },
+            beforeFirstStep = {
+                // With the microphone: start once it delivers sound (a browser's first blocks are
+                // silence), so the first note, which the player cannot be playing along with yet,
+                // reaches it in full; the app learns its own sound's delay from that note.
+                if (microphone) withTimeoutOrNull(MICROPHONE_WARM_UP_LIMIT) { microphoneLive.await() }
+                if (microphone) delay(MICROPHONE_SETTLE)
+            },
         )
         runner = practice
         running = true
@@ -473,7 +486,9 @@ class AppController(
             null
         }
         recorder = recording
-        val blocks = if (rendered != null) audio.blocksWith(rendered::playedAudio) else audio.blocks.map { AudioBlock(it) }
+        val live = CompletableDeferred<Unit>().also { microphoneLive = it }
+        val blocks = (if (rendered != null) audio.blocksWith(rendered::playedAudio) else audio.blocks.map { AudioBlock(it) })
+            .onEach { block -> if (!live.isCompleted && block.microphone.any { it != 0f }) live.complete(Unit) }
         expectedChords.value = emptyList()
         if (voices > 1) {
             return blocks
@@ -889,6 +904,8 @@ class AppController(
 
     companion object {
         const val DEFAULT_SETUP_NAME = "Default"
+        private val MICROPHONE_WARM_UP_LIMIT = 2.seconds
+        private val MICROPHONE_SETTLE = 300.milliseconds
         private const val MIDI_TEST_HISTORY = 8
         private const val TEST_NOTE = 69 // A4
         private const val TEST_NOTE_MILLIS = 1000L

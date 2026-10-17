@@ -373,6 +373,16 @@ several voices).
     and browsers decode with their own native decoder (`PlatformServices.audioDecoder`): all 30
     in 0.19 s on a Mac; the common Kotlin decoder, running as WebAssembly, is the fallback.
     Recordings log `pianoSamplesLoadedMillis`.
+  - In a phone's browser the app's own sound was never removed: the onset votes for the delay
+    took the steady lag of a player answering in tempo (85 ms) for the loudspeaker's (180 ms).
+    The delay now comes from the app's own attacks: the first one after a silence in the
+    microphone is taken at once (only the app sounds then), later ones are cross-correlated with
+    the microphone and summed, and once the sum peaks clearly the votes no longer change it
+    (`EchoEstimator.measureAttack`). An exercise with the microphone starts only once it
+    delivers sound (a browser's first blocks are silence) plus 0.3 s, so the first note is heard
+    in full (`PracticeRunner.beforeFirstStep`). Test: `EchoCancellationTest.aPlayerInTempoDoesNotMisleadTheDelay`.
+    Also found there: the app's sound reached the microphone as loud as the piano (−9 dB both);
+    a quieter loudspeaker (or lower velocity) leaves the player's answers clearer.
 - **Storage:** setups in the app's private files; recordings in
   `Android/data/io.github.jonnyfrick.musicbootcamp/files/recordings`, reachable over USB.
 - **Lifecycle:** rotating or resizing keeps the activity (`configChanges`), so an exercise keeps

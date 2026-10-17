@@ -105,4 +105,29 @@ class EchoCancellationTest {
         assertTrue(detected.all { note -> answers.any { it.first == note.midiNote && note.seconds() - it.second in 0.0..0.5 } }, found)
         assertTrue(detected.size >= answers.size - 2, found)
     }
+
+    @Test
+    fun aPlayerInTempoDoesNotMisleadTheDelay() {
+        // Found in a phone's browser: the loudspeaker 180 ms ahead of the microphone and as loud as
+        // the piano, the player answering every note in tempo, just after the app's next one
+        // started. The onset votes took the player's steady lag for the delay (85 ms), so the
+        // app's sound was never removed and answers colliding with its attacks were lost.
+        val lead = 0.5 // the exercise starts once the microphone delivers sound
+        val reference = FloatArray((17.5 * sampleRate).toInt())
+        appNotes.forEachIndexed { step, note ->
+            addPianoStroke(reference, note, startSeconds = lead + step, durationSeconds = 0.5, seed = 1000 + step)
+        }
+        val delay = 7_940 // 180 ms
+        val microphone = roomEcho(reference, delaySamples = delay, gain = 1.0)
+        val answers = (1 until appNotes.size).map { step -> appNotes[step - 1] to lead + step + 0.08 }
+        answers.forEach { (note, time) -> addPianoStroke(microphone, note, startSeconds = time, durationSeconds = 0.4, seed = 7 * note) }
+
+        val tracker = NoteTracker(sampleRate)
+        microphone.indices.chunked(480).forEach { indices ->
+            val range = indices.first()..indices.last()
+            tracker.process(microphone.sliceArray(range), reference.sliceArray(range))
+        }
+        val found = tracker.ownSound!!.delayHops!! * tracker.hopSize
+        assertTrue(kotlin.math.abs(found - delay) <= 2 * tracker.hopSize, "delay ${found * 1000 / sampleRate} ms, not 180 ms")
+    }
 }

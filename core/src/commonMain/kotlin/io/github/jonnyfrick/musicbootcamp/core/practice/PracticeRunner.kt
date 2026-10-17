@@ -64,6 +64,12 @@ class PracticeRunner(
     private val onStep: (StepResult) -> Unit = {},
     /** Called on the session dispatcher for every late [Evaluation]. */
     private val onEvaluation: (Evaluation) -> Unit = {},
+    /**
+     * Awaited before the first note, while the input is already listened to: e.g. until the
+     * microphone really delivers sound, so the first note (the one the player cannot be playing
+     * along with yet) is heard in full.
+     */
+    private val beforeFirstStep: suspend () -> Unit = {},
     private val sessionDispatcher: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1),
 ) {
     private val session = PracticeSession(settings, memory, random, output)
@@ -84,6 +90,7 @@ class PracticeRunner(
             }
         }
         val clockJob = scope.launch(sessionDispatcher) {
+            beforeFirstStep()
             // Like Timer.schedule(task, 0, period): first step immediately, then fixed delay.
             var given = 0
             while (isActive) {

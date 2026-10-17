@@ -49,7 +49,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
@@ -183,33 +183,13 @@ private fun PracticeContent(controller: AppController, onCustomize: (() -> Unit)
             )
         }
 
-        Card(
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-            modifier = Modifier.fillMaxWidth().padding(horizontal = SettingPadding, vertical = 12.dp),
-        ) {
-            Column(Modifier.fillMaxWidth().padding(vertical = 32.dp, horizontal = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                val notesDescription = stringResource(Res.string.practice_given_notes)
-                Text(
-                    when {
-                        status.given.isEmpty() -> "–"
-                        !controller.preferences.showGivenNotes -> "♪ ?"
-                        else -> status.given.distinct().joinToString("  ") { controller.noteName(it) }
-                    },
-                    style = MaterialTheme.typography.displayLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.semantics { contentDescription = notesDescription },
-                )
-                VerticalSpace(12)
-                LiveResult(status, running, settings.breathingTime)
-                VerticalSpace(24)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    Stat(stringResource(Res.string.stat_steps), status.steps)
-                    Stat(stringResource(Res.string.stat_correct), status.correct)
-                    Stat(stringResource(Res.string.stat_wrong), status.wrong)
-                    Stat(stringResource(Res.string.stat_stored), status.storedMistakes)
-                }
-            }
+        PracticeStage(status, controller.feedback, running, settings, controller.preferences.showGivenNotes, controller::noteName)
+
+        Row(Modifier.fillMaxWidth().padding(horizontal = SettingPadding, vertical = 12.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+            Stat(stringResource(Res.string.stat_steps), status.steps)
+            Stat(stringResource(Res.string.stat_correct), status.correct, MaterialTheme.extendedColors.correct)
+            Stat(stringResource(Res.string.stat_wrong), status.wrong, MaterialTheme.colorScheme.error)
+            Stat(stringResource(Res.string.stat_stored), status.storedMistakes)
         }
 
         FilterChip(
@@ -228,85 +208,10 @@ private fun PracticeContent(controller: AppController, onCustomize: (() -> Unit)
     }
 }
 
-/**
- * The latest answer's result right when it is recognised, otherwise "listening": a result shows
- * for at least [RESULT_HOLD_MILLIS] (less at very fast tempos) and then gives way to "listening"
- * as soon as a step waits for its answer. Each result fades in anew, so a run of right (or wrong)
- * answers is visible too.
- */
 @Composable
-private fun LiveResult(status: PracticeStatus, running: Boolean, breathingTime: Float) {
-    var holding by remember { mutableStateOf(false) }
-    LaunchedEffect(status.lastResult) {
-        if (status.lastResult == null) return@LaunchedEffect
-        holding = true
-        delay(minOf(RESULT_HOLD_MILLIS, (breathingTime * 500).toLong()))
-        holding = false
-    }
-    val result = shownResult(status, running, holding)
-    AnimatedContent(
-        targetState = result,
-        transitionSpec = { (fadeIn(tween(150)) + scaleIn(tween(150), initialScale = 0.85f)) togetherWith fadeOut(tween(100)) },
-        contentAlignment = Alignment.Center,
-    ) { shown -> ResultBadge(shown, running) }
-}
-
-private const val RESULT_HOLD_MILLIS = 700L
-
-/**
- * The result to show, or null for "listening" (or idle when stopped). [holding]: the latest
- * result came in less than [RESULT_HOLD_MILLIS] ago. After that it stays only while it is about
- * the current step, i.e. no newer step waits for its answer.
- */
-internal fun shownResult(status: PracticeStatus, running: Boolean, holding: Boolean): StepVerdict? =
-    status.lastResult?.takeIf { running && (holding || it.step == status.steps - 1) }
-
-/**
- * Right, wrong or nothing heard, as colour, icon and word (not by colour alone), announced to
- * screen readers; null: listening, or idle when stopped.
- */
-@Composable
-private fun ResultBadge(result: StepVerdict?, running: Boolean) {
-    val (text, container, content) = when {
-        result == null -> Triple(
-            if (running) Res.string.practice_listen else Res.string.practice_idle,
-            MaterialTheme.colorScheme.surfaceContainerHigh,
-            MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        result.correct -> Triple(Res.string.practice_correct, MaterialTheme.extendedColors.correctContainer, MaterialTheme.extendedColors.onCorrectContainer)
-        result.missed -> Triple(Res.string.practice_missed, MaterialTheme.colorScheme.tertiaryContainer, MaterialTheme.colorScheme.onTertiaryContainer)
-        else -> Triple(Res.string.practice_wrong, MaterialTheme.colorScheme.errorContainer, MaterialTheme.colorScheme.onErrorContainer)
-    }
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .background(container, RoundedCornerShape(50))
-            .padding(horizontal = 16.dp, vertical = 6.dp)
-            .semantics { liveRegion = LiveRegionMode.Polite },
-    ) {
-        val icon = Modifier.size(20.dp).padding(end = 4.dp)
-        when {
-            result == null -> if (running) {
-                // Listening: a gently pulsing note, so the display is visibly alive.
-                val pulse by rememberInfiniteTransition().animateFloat(
-                    initialValue = 0.35f,
-                    targetValue = 1f,
-                    animationSpec = infiniteRepeatable(tween(600), RepeatMode.Reverse),
-                )
-                Icon(AppIcons.MusicNote, contentDescription = null, tint = content, modifier = icon.alpha(pulse))
-            }
-            result.correct -> Icon(AppIcons.Check, contentDescription = null, tint = content, modifier = icon)
-            result.missed -> Icon(AppIcons.Remove, contentDescription = null, tint = content, modifier = icon)
-            else -> Icon(AppIcons.Close, contentDescription = null, tint = content, modifier = icon)
-        }
-        Text(stringResource(text), style = MaterialTheme.typography.labelLarge, color = content)
-    }
-}
-
-@Composable
-private fun Stat(label: String, value: Int) {
+private fun Stat(label: String, value: Int, color: Color = Color.Unspecified) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.semantics(mergeDescendants = true) {}) {
-        Text(value.toString(), style = MaterialTheme.typography.headlineMedium)
+        Text(value.toString(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, color = color)
         Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

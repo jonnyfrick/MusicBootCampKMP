@@ -99,6 +99,9 @@ class AppController(
         private set
     var status by mutableStateOf(PracticeStatus())
         private set
+    /** Streak, recent results and the latest answer as keys, folded from [status]. */
+    internal var feedback by mutableStateOf(PracticeFeedback())
+        private set
     var inputDevices by mutableStateOf(listOf<String>())
         private set
     var outputDevices by mutableStateOf(listOf<String>())
@@ -150,6 +153,8 @@ class AppController(
 
     /** The chords given lately, for the chord recognition (read from the audio thread). */
     private val expectedChords = MutableStateFlow<List<List<Int>>>(emptyList())
+    /** The notes the player struck last (MIDI or recognised), written where the exercise runs. */
+    private val playedNotes = MutableStateFlow<List<Int>>(emptyList())
 
     /** The player's piano as measured by calibration; the chord recognition's templates. */
     var learnedTemplates by mutableStateOf(LearnedTemplates())
@@ -383,9 +388,15 @@ class AppController(
             "chordDetectionParameters" to tuning.chordParameters(settings.mode.voices).toJson(),
         )
         runSummary = null
+        playedNotes.value = emptyList()
+        feedback = feedback.restarted()
 
+        val voices = settings.mode.voices
         val practice = PracticeRunner(
-            scope, settings, setup.memory(), practiceOutput, input,
+            scope, settings, setup.memory(), practiceOutput,
+            input.onEach { message ->
+                if (message.isNoteOn) playedNotes.value = (playedNotes.value + message.data1).takeLast(PLAYED_NOTES)
+            },
             lateAnswerTolerance = lateAnswerTolerance,
             maxSteps = optimizationSteps,
             onStep = { step ->
@@ -407,6 +418,7 @@ class AppController(
         statusJob = scope.launch {
             practice.status.collect {
                 status = it
+                feedback = feedback.next(it, playedNotes.value.takeLast(voices))
                 if (it.finished && runner === practice) stopPractice()
             }
         }
@@ -915,6 +927,9 @@ class AppController(
 }
 
 private const val EXPECTED_CHORDS = 3
+
+/** How many of the player's latest notes are kept for the keyboard on the practice screen. */
+private const val PLAYED_NOTES = 8
 
 /** What a run in optimization mode recorded, step by step. */
 class RunSummary(val recording: String, val steps: List<StepSummary>)

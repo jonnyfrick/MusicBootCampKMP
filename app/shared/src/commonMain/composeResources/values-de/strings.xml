@@ -41,6 +41,17 @@
     <string name="practice_wrong">Falsch</string>
     <string name="practice_missed">Nichts gehört</string>
     <string name="practice_given_notes">Vorgegebene Töne</string>
+    <string name="practice_instead_of">statt</string>
+    <string name="practice_semitone_higher">einen Halbton zu hoch</string>
+    <string name="practice_semitone_lower">einen Halbton zu tief</string>
+    <string name="practice_semitones_higher">%1$d Halbtöne zu hoch</string>
+    <string name="practice_semitones_lower">%1$d Halbtöne zu tief</string>
+    <string name="practice_was">gesucht war %1$s</string>
+    <string name="practice_answer">%1$s statt %2$s</string>
+    <string name="streak_in_a_row">in Folge</string>
+    <string name="streak_best">Bestmarke %1$d</string>
+    <string name="streak_description">%1$d richtig in Folge, Bestmarke %2$d</string>
+    <string name="recent_results">Letzte Ergebnisse: %1$d von %2$d richtig</string>
     <string name="stat_steps">Schritte</string>
     <string name="stat_correct">Richtig</string>
     <string name="stat_wrong">Falsch</string>

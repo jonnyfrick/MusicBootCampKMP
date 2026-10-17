@@ -41,6 +41,17 @@
     <string name="practice_wrong">Wrong</string>
     <string name="practice_missed">Nothing heard</string>
     <string name="practice_given_notes">Given notes</string>
+    <string name="practice_instead_of">instead of</string>
+    <string name="practice_semitone_higher">a semitone too high</string>
+    <string name="practice_semitone_lower">a semitone too low</string>
+    <string name="practice_semitones_higher">%1$d semitones too high</string>
+    <string name="practice_semitones_lower">%1$d semitones too low</string>
+    <string name="practice_was">it was %1$s</string>
+    <string name="practice_answer">%1$s instead of %2$s</string>
+    <string name="streak_in_a_row">in a row</string>
+    <string name="streak_best">Best %1$d</string>
+    <string name="streak_description">%1$d right in a row, best %2$d</string>
+    <string name="recent_results">Latest results: %1$d of %2$d right</string>
     <string name="stat_steps">Steps</string>
     <string name="stat_correct">Correct</string>
     <string name="stat_wrong">Wrong</string>

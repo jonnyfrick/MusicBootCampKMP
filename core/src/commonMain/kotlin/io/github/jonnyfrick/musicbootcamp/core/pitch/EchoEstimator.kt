@@ -28,7 +28,7 @@ import kotlin.math.sqrt
  * microphone's usual level while the app plays.
  */
 internal class EchoEstimator(
-    sampleRate: Int,
+    private val sampleRate: Int,
     private val windowSize: Int,
     private val paddedSize: Int,
     private val hop: Int,
@@ -55,6 +55,22 @@ internal class EchoEstimator(
     var delayHops: Int? = null
         private set
     private val delayVotes = ArrayDeque<Int>()
+
+    // The delay from the attacks of the app's notes (see measureAttack).
+    private val maxLagSamples = MAX_DELAY_HOPS * hop
+    private val attackSamples = ATTACK_SAMPLES_PER_KHZ * sampleRate / 1000 + hop
+    private val attackHistory = attackSamples + maxLagSamples + 2 * hop
+    private val micHistory = FloatArray(attackHistory)
+    private val refHistory = FloatArray(attackHistory)
+    private val correlationSize = nextPowerOfTwo(2 * attackSamples + maxLagSamples)
+    private val micRe = DoubleArray(correlationSize)
+    private val micIm = DoubleArray(correlationSize)
+    private val refRe = DoubleArray(correlationSize)
+    private val refIm = DoubleArray(correlationSize)
+    private val attackCurve = DoubleArray(maxLagSamples + 1)
+    private var attacksMeasured = 0
+    private var hopsSinceAttack = -1
+    private var delayFromAttacks = false
 
     private val logGain = DoubleArray(bandCount)
     private val gainUpdates = IntArray(bandCount)
@@ -121,7 +137,14 @@ internal class EchoEstimator(
         micEnvelope[slot] = ln(micEnergy + ENVELOPE_FLOOR)
         refEnvelope[slot] = ln(refEnergy + ENVELOPE_FLOOR)
         hops++
-        voteForDelay()
+        slide(micHistory, micHop)
+        slide(refHistory, refHop)
+        if (hopsSinceAttack < 0 && jump(refEnvelope, 0) >= ln(REFERENCE_ONSET) && refEnergy > AUDIBLE_REFERENCE) hopsSinceAttack = 0
+        if (hopsSinceAttack >= 0 && ++hopsSinceAttack * hop >= attackSamples + maxLagSamples) {
+            measureAttack(hopsSinceAttack)
+            hopsSinceAttack = -1
+        }
+        if (!delayFromAttacks) voteForDelay()
         // A jump in the microphone that no recent onset of the reference explains is the player.
         val explained = (0..MAX_DELAY_HOPS).any { jump(refEnvelope, it) > ln(REFERENCE_JUMP) }
         referenceOnsetRecent = explained
@@ -259,6 +282,14 @@ internal class EchoEstimator(
         val best = (MIN_DELAY_HOPS..MAX_DELAY_HOPS).maxBy { lag -> jump(micEnvelope, age - lag) }
         if (jump(micEnvelope, age - best) < ln(MICROPHONE_ONSET)) return // not heard (e.g. under a loud stroke)
 
+        // The first attack after a silence in the microphone (the start of an exercise, before the
+        // player can play along) shows the delay unmistakably: the only rise is the app's echo.
+        if (delayVotes.isEmpty() && micQuietBefore(age)) {
+            delayHops = best
+            delayFromAttacks = true
+            delayVotes.addLast(best)
+            return
+        }
         delayVotes.addLast(best)
         if (delayVotes.size > DELAY_VOTES) delayVotes.removeFirst()
         // The lag most votes agree with (±1 hop); it must hold at least two and half of them.
@@ -267,6 +298,74 @@ internal class EchoEstimator(
         if (support < MIN_DELAY_SUPPORT || 2 * support < delayVotes.size) return
         val current = delayHops
         if (current == null || abs(winner - current) > 1 && support >= MIN_DELAY_SUPPORT + 1) delayHops = winner
+    }
+
+    /**
+     * The delay from an attack of the app's sound, [age] hops ago: the reference around it is
+     * cross-correlated with the microphone at every lag (both pre-emphasised, so the attack's
+     * broad band counts more than the sustained, periodic tone), normalised, and added up over
+     * the attacks. The app's echo lies at the same lag after every attack; what the player plays
+     * meanwhile does not, however exactly in time (their piano is another source, with its own
+     * phase). Once the sum shows a clear peak, that is the delay, and onsets no longer change it.
+     * (The onset votes alone were misled in a phone's browser: a player answering in time strikes
+     * at a steady lag after the app's notes, which won over the true one.)
+     */
+    private fun measureAttack(age: Int) {
+        val start = attackHistory - age * hop - hop
+        if (start < 1) return
+        fun emphasised(buffer: FloatArray, i: Int) = (buffer[i] - PRE_EMPHASIS * buffer[i - 1]).toDouble()
+        micRe.fill(0.0)
+        micIm.fill(0.0)
+        refRe.fill(0.0)
+        refIm.fill(0.0)
+        var refEnergy = 0.0
+        for (i in 0 until attackSamples) {
+            refRe[i] = emphasised(refHistory, start + i)
+            refEnergy += refRe[i] * refRe[i]
+        }
+        if (refEnergy <= 0.0) return
+        val micLength = minOf(attackSamples + maxLagSamples, attackHistory - start)
+        val micPrefix = DoubleArray(micLength + 1)
+        for (i in 0 until micLength) {
+            micRe[i] = emphasised(micHistory, start + i)
+            micPrefix[i + 1] = micPrefix[i] + micRe[i] * micRe[i]
+        }
+        fft(refRe, refIm)
+        fft(micRe, micIm)
+        // mic · conj(ref), back in time: the correlation at every lag.
+        for (k in 0 until correlationSize) {
+            val re = micRe[k] * refRe[k] + micIm[k] * refIm[k]
+            val im = micIm[k] * refRe[k] - micRe[k] * refIm[k]
+            micRe[k] = re
+            micIm[k] = im
+        }
+        fft(micRe, micIm, inverse = true)
+        val scale = 1.0 / correlationSize // only if the inverse is not normalised; the ratio below does not care
+        for (lag in 0..maxLagSamples) {
+            if (lag + attackSamples > micLength) break
+            val micEnergy = micPrefix[lag + attackSamples] - micPrefix[lag]
+            if (micEnergy > 0) attackCurve[lag] = ATTACK_MEMORY * attackCurve[lag] + abs(micRe[lag] * scale) / sqrt(refEnergy * micEnergy)
+        }
+        attacksMeasured++
+        if (attacksMeasured < MIN_ATTACKS) return
+
+        val minLag = MIN_DELAY_HOPS * hop
+        var best = minLag
+        for (lag in minLag..maxLagSamples) if (attackCurve[lag] > attackCurve[best]) best = lag
+        val apart = SEPARATE_PEAKS_PER_KHZ * sampleRate / 1000
+        var second = 0.0
+        for (lag in minLag..maxLagSamples) if (abs(lag - best) > apart) second = max(second, attackCurve[lag])
+        if (attackCurve[best] < CLEAR_PEAK * second) return
+        val found = ((best + hop / 2) / hop).coerceIn(MIN_DELAY_HOPS, MAX_DELAY_HOPS)
+        delayFromAttacks = true
+        if (delayHops == null || abs(found - delayHops!!) > 1) delayHops = found
+    }
+
+    /** Whether the microphone was near silent for the hops before the reference onset [age] hops ago. */
+    private fun micQuietBefore(age: Int): Boolean {
+        if (hops < age + QUIET_HOPS + 2) return false
+        val levels = (1..QUIET_HOPS).map { micEnvelope[slot(hops - 1 - age - it)] }
+        return levels.max() - levels.min() < ln(QUIET_SPREAD) // steady: noise, no notes
     }
 
     private fun windowStart(lagHops: Int) = reference.size - windowSize - lagHops * hop
@@ -304,6 +403,15 @@ internal class EchoEstimator(
 
     private companion object {
         const val MAX_DELAY_HOPS = 30 // ~350 ms at 44.1 kHz
+        const val ATTACK_SAMPLES_PER_KHZ = 100 // 100 ms of each attack
+        const val PRE_EMPHASIS = 0.97f
+        const val MIN_ATTACKS = 3
+        /** Earlier attacks count less (by this factor per attack), so a changed delay is found again. */
+        const val ATTACK_MEMORY = 0.9
+        const val SEPARATE_PEAKS_PER_KHZ = 15 // peaks closer than 15 ms are one
+        const val CLEAR_PEAK = 1.2
+        const val QUIET_HOPS = 10 // ~0.1 s
+        const val QUIET_SPREAD = 4.0 // within 6 dB
         const val HISTORY_SECONDS = 8
         const val MIN_LEVEL_UPDATES = 10
         const val LEVEL_QUANTILE = 0.9

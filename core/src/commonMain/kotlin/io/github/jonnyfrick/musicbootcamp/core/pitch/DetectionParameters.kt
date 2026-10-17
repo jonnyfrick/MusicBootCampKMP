@@ -28,7 +28,12 @@ data class DetectionParameters(
     /** Over the app's sound, a stroke must raise the total level by this factor too. */
     val rawRise: Double = 1.5,
     /** Where the app's note starts, a stroke must exceed this share of its predicted level. */
-    val ownSoundShare: Double = 0.5,
+    val ownSoundShare: Double = 0.25,
+    /**
+     * The same for a stroke whose pitch the app's sound has a strong partial at (its note and
+     * octaves): what remains of the app's attack is easily taken for such a note.
+     */
+    val ownPitchShare: Double = 0.5,
     /**
      * Before the app's sound can be removed (or where it is too quiet to measure), a stroke must be
      * this many times louder than the microphone usually is while the app plays; 0 = off (then

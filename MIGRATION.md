@@ -383,6 +383,14 @@ several voices).
     in full (`PracticeRunner.beforeFirstStep`). Test: `EchoCancellationTest.aPlayerInTempoDoesNotMisleadTheDelay`.
     Also found there: the app's sound reached the microphone as loud as the piano (−9 dB both);
     a quieter loudspeaker (or lower velocity) leaves the player's answers clearer.
+  - With the delay right, a very late answer was still lost where it met the app's next attack:
+    there a stroke had to exceed half the predicted level of the app's note on top of the onset
+    ratio, although the app's sound is already removed. Now a quarter is enough unless the app's
+    predicted sound has a strong partial at the pitch heard (`ownSoundShare` 0.25,
+    `ownPitchShare` 0.5, `EchoEstimator.soundsAt`); a quarter for every pitch let remains of the
+    app's own attacks through. Stored parameters reset (`DETECTION_PARAMETERS_REVISION` 2).
+    Replaying all 71 phone recordings: 4 more hits (490 → 494), no other result changed. Test:
+    `EchoCancellationTest.aLateAnswerOnTheAppsNextAttackCountsIfItIsAnotherPitch`.
 - **Storage:** setups in the app's private files; recordings in
   `Android/data/io.github.jonnyfrick.musicbootcamp/files/recordings`, reachable over USB.
 - **Lifecycle:** rotating or resizing keeps the activity (`configChanges`), so an exercise keeps

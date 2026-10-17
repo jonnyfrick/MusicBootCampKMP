@@ -105,6 +105,8 @@ class NoteTracker(
     private val recentLevels = ArrayDeque<Double>()
     private val recentRawLevels = ArrayDeque<Double>()
     private var hopsSinceOnset = -1 // -1: no stroke being analysed
+    /** The stroke stood out against the app's attack only by [DetectionParameters.ownSoundShare]. */
+    private var strokeNearOwnPitch = false
     private var hopsSinceStroke = Int.MAX_VALUE / 2
     private var hopsSinceNote = Int.MAX_VALUE / 2
     private var candidate: Int? = null
@@ -211,8 +213,10 @@ class NoteTracker(
 
         // Where the app's note starts, its prediction is least exact: there a stroke must also
         // stand out against the app's sound, not only against what remained before.
-        val ownLevel = if (ownSoundRemoved && echo!!.referenceOnsetNear) sqrt(echo.hopEchoEnergy) * parameters.ownSoundShare else 0.0
-        val previous = maxOf(recentLevels.minOrNull() ?: 0.0, ownLevel)
+        // A stroke at a pitch the app is sounding must stand out more (decided once its pitch is known).
+        val ownLevel = if (ownSoundRemoved && echo!!.referenceOnsetNear) sqrt(echo.hopEchoEnergy) else 0.0
+        val previous = maxOf(recentLevels.minOrNull() ?: 0.0, ownLevel * parameters.ownSoundShare)
+        val strictPrevious = maxOf(previous, ownLevel * parameters.ownPitchShare)
         // What remains of the app's sound fluctuates (e.g. beating with a ringing note); a real
         // stroke also raises the total level above the last hops.
         // Shortly after a note, what remains of it and the app's sound can beat; a new stroke then
@@ -237,6 +241,7 @@ class NoteTracker(
         hopBuffer.copyInto(window, destinationOffset = windowSize - hop)
 
         if (onset) {
+            strokeNearOwnPitch = strokeLevel <= onsetRatio * strictPrevious
             hopsSinceStroke = 0
             hopsSinceOnset = 0
             resetCandidate()
@@ -275,6 +280,7 @@ class NoteTracker(
         // after, without the level having dropped in between, is still that one attack.
         val sameAttack = instrument.sustained && note == lastNote && hopsSinceNote < sameAttackHops &&
             lowestLevelSinceNote > REATTACK_DIP * levelAtNote
+        if (strokeNearOwnPitch && echo!!.soundsAt(estimate.frequencyHz)) return null
         return if (sameAttack) null else confirmed(note, candidateFrequencies.takeLast(confirmFrames).average(), ownSoundRemoved)
     }
 

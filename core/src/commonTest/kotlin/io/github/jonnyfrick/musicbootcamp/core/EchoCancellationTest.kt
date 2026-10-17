@@ -1,6 +1,7 @@
 package io.github.jonnyfrick.musicbootcamp.core
 
 import io.github.jonnyfrick.musicbootcamp.core.pitch.DetectedNote
+import io.github.jonnyfrick.musicbootcamp.core.pitch.DetectionParameters
 import io.github.jonnyfrick.musicbootcamp.core.pitch.NoteTracker
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -129,5 +130,33 @@ class EchoCancellationTest {
         }
         val found = tracker.ownSound!!.delayHops!! * tracker.hopSize
         assertTrue(kotlin.math.abs(found - delay) <= 2 * tracker.hopSize, "delay ${found * 1000 / sampleRate} ms, not 180 ms")
+    }
+
+    @Test
+    fun aLateAnswerOnTheAppsNextAttackCountsIfItIsAnotherPitch() {
+        // Found in a phone's browser: a very late answer started with the echo of the app's next
+        // note and had to stand out against half of that note's level, although the app's sound
+        // was already removed. A stroke at another pitch than the app's now needs only a quarter.
+        val lead = 0.5
+        val reference = FloatArray((17.5 * sampleRate).toInt())
+        appNotes.forEachIndexed { step, note ->
+            addPianoStroke(reference, note, startSeconds = lead + step, durationSeconds = 0.5, seed = 1000 + step)
+        }
+        val microphone = roomEcho(reference, delaySamples = 7_940, gain = 1.0)
+        // Silent while the delay is learned, then each note answered as the next one's echo arrives.
+        val answers = (5 until appNotes.size).map { step -> appNotes[step - 1] to lead + step + 0.18 }
+        answers.forEach { (note, time) -> addPianoStroke(microphone, note, startSeconds = time, durationSeconds = 0.4, seed = 7 * note) }
+
+        fun found(parameters: DetectionParameters): Int {
+            val tracker = NoteTracker(sampleRate, parameters = parameters)
+            val notes = microphone.indices.chunked(480).flatMap { indices ->
+                val range = indices.first()..indices.last()
+                tracker.process(microphone.sliceArray(range), reference.sliceArray(range))
+            }
+            return answers.count { (note, time) -> notes.any { it.midiNote == note && it.seconds() - time in 0.0..0.15 } }
+        }
+        val asBefore = found(DetectionParameters(ownSoundShare = 0.5))
+        val now = found(DetectionParameters())
+        assertTrue(now > asBefore, "$now of ${answers.size} found, before $asBefore")
     }
 }

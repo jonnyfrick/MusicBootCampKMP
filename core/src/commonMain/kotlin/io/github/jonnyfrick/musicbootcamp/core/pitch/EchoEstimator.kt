@@ -20,6 +20,10 @@ import kotlin.math.sqrt
  *   microphone / reference, learned only while the player is not playing. A stroke shows as a
  *   level jump in the microphone without one in the reference; learning pauses after it, so a
  *   missed stroke cannot raise the gain and hide the next one. Far outliers are ignored.
+ *   Also from the app's attacks (see [measureAttackGains]): what the microphone gained at an
+ *   attack against what the reference gained. A note of the player ringing on is in both
+ *   moments and drops out, so this works even if the player always plays into the app's notes;
+ *   it makes the estimate ready after a few attacks and caps gains the pauses learned too high.
  * - Room reverberation: the prediction decays by [reverbDecay] per hop at the slowest.
  *
  * The prediction is scaled by [overSubtraction] as a safety margin. Until the delay is known
@@ -59,7 +63,8 @@ internal class EchoEstimator(
     // The delay from the attacks of the app's notes (see measureAttack).
     private val maxLagSamples = MAX_DELAY_HOPS * hop
     private val attackSamples = ATTACK_SAMPLES_PER_KHZ * sampleRate / 1000 + hop
-    private val attackHistory = attackSamples + maxLagSamples + 2 * hop
+    // A window before the attack too, for the gains (see measureAttackGains).
+    private val attackHistory = windowSize + attackSamples + maxLagSamples + 2 * hop
     private val micHistory = FloatArray(attackHistory)
     private val refHistory = FloatArray(attackHistory)
     private val correlationSize = nextPowerOfTwo(2 * attackSamples + maxLagSamples)
@@ -76,6 +81,10 @@ internal class EchoEstimator(
     private val gainUpdates = IntArray(bandCount)
     private var logGainAll = 0.0
     private var gainUpdatesAll = 0
+    // From the attacks: the latest log ratios per band (and over all bands), their median counts.
+    private val attackLogGains = Array(bandCount) { ArrayDeque<Double>() }
+    private val attackLogGainsAll = ArrayDeque<Double>()
+    private val effectiveLogGain = DoubleArray(bandCount)
 
     /** The predicted power spectrum of the app's sound in the current analysis window. */
     val echoPower = DoubleArray(paddedSize)
@@ -84,7 +93,7 @@ internal class EchoEstimator(
     var hopEchoEnergy = 0.0
         private set
 
-    val ready: Boolean get() = delayHops != null && gainUpdatesAll >= MIN_GAIN_UPDATES
+    val ready: Boolean get() = delayHops != null && (gainUpdatesAll >= MIN_GAIN_UPDATES || attackLogGainsAll.size >= MIN_ATTACK_GAINS)
 
     /** Whether an onset of the app's sound reaches the microphone about now (where predictions are least exact). */
     var referenceOnsetNear = false
@@ -210,8 +219,27 @@ internal class EchoEstimator(
     /** RMS of what the microphone got beyond the predicted own sound. */
     fun residualLevel(micEnergy: Double): Double = sqrt((micEnergy - hopEchoEnergy).coerceAtLeast(0.0))
 
-    private fun gain(band: Int): Double =
-        exp(if (gainUpdates[band] >= MIN_BAND_UPDATES) logGain[band] else logGainAll)
+    private fun gain(band: Int): Double = exp(effectiveLogGain[band])
+
+    /**
+     * The gains in use: per band from the pauses, capped at [ATTACK_GAIN_MARGIN] times the one
+     * from the attacks (the player's notes ringing on can only raise what the pauses learn);
+     * where a band has not been learned, the overall gain.
+     */
+    private fun updateEffectiveGains() {
+        val pausesAll = gainUpdatesAll >= MIN_GAIN_UPDATES || attackLogGainsAll.isEmpty()
+        val all = if (pausesAll) logGainAll else median(attackLogGainsAll) + ln(ATTACK_ALONE)
+        for (band in 0 until bandCount) {
+            val pauses = if (gainUpdates[band] >= MIN_BAND_UPDATES) logGain[band] else null
+            val attacks = attackLogGains[band].takeIf { it.size >= MIN_ATTACK_GAINS }?.let { median(it) }
+            effectiveLogGain[band] = when {
+                pauses != null && attacks != null -> min(pauses, attacks + ln(ATTACK_GAIN_MARGIN))
+                else -> pauses ?: attacks?.plus(ln(ATTACK_ALONE)) ?: all
+            }
+        }
+    }
+
+    private fun median(values: Collection<Double>): Double = values.sorted()[values.size / 2]
 
     private fun updateGains(delay: Int) {
         spectrum(microphone, 0, windowSize, re, im)
@@ -239,6 +267,45 @@ internal class EchoEstimator(
             logGainAll += quantileStep(ln((micSum + TINY) / refSum), logGainAll, gainUpdatesAll, gainQuantile)
             gainUpdatesAll++
         }
+        updateEffectiveGains()
+    }
+
+    /**
+     * The gains from an attack of the app's sound starting at [start] in the histories: per band,
+     * what the microphone gained from the window before to the window after the attack (both
+     * [delay] hops later), against what the reference gained.
+     */
+    private fun measureAttackGains(start: Int, delay: Int) {
+        val lag = delay * hop
+        if (start < windowSize || start + lag + windowSize > attackHistory) return
+        fun bandsOf(source: FloatArray, offset: Int, bands: DoubleArray) {
+            spectrum(source, offset, windowSize, re, im)
+            bandSums(re, bands)
+        }
+        val refBefore = DoubleArray(bandCount).also { bandsOf(refHistory, start - windowSize, it) }
+        bandsOf(refHistory, start, refBands)
+        val micBefore = DoubleArray(bandCount).also { bandsOf(micHistory, start + lag - windowSize, it) }
+        bandsOf(micHistory, start + lag, micBands)
+        for (band in 0 until bandCount) {
+            refBands[band] = (refBands[band] - refBefore[band]).coerceAtLeast(0.0)
+            micBands[band] = (micBands[band] - micBefore[band]).coerceAtLeast(0.0)
+        }
+        val loudest = refBands.max()
+        val quiet = BAND_SILENCE * paddedSize * windowSize
+        if (loudest < quiet) return
+        var micSum = 0.0
+        var refSum = 0.0
+        for (band in 0 until bandCount) {
+            val ref = refBands[band]
+            if (ref < loudest * ATTACK_BAND || ref < quiet) continue
+            micSum += micBands[band]
+            refSum += ref
+            attackLogGains[band].addLast(ln((micBands[band] + TINY) / ref))
+            if (attackLogGains[band].size > ATTACK_GAINS) attackLogGains[band].removeFirst()
+        }
+        attackLogGainsAll.addLast(ln((micSum + TINY) / refSum))
+        if (attackLogGainsAll.size > ATTACK_GAINS) attackLogGainsAll.removeFirst()
+        updateEffectiveGains()
     }
 
     /** Stochastic quantile tracking; faster while there are few observations. */
@@ -326,6 +393,7 @@ internal class EchoEstimator(
     private fun measureAttack(age: Int) {
         val start = attackHistory - age * hop - hop
         if (start < 1) return
+        delayHops?.let { measureAttackGains(start, it) }
         fun emphasised(buffer: FloatArray, i: Int) = (buffer[i] - PRE_EMPHASIS * buffer[i - 1]).toDouble()
         micRe.fill(0.0)
         micIm.fill(0.0)
@@ -449,6 +517,11 @@ internal class EchoEstimator(
         const val FAST_UPDATES = 40
         const val MIN_BAND_UPDATES = 20
         const val MIN_GAIN_UPDATES = 100
+        const val ATTACK_GAINS = 7 // the latest attacks' gains, of which the median counts
+        const val MIN_ATTACK_GAINS = 3
+        const val ATTACK_BAND = 0.01 // bands 20 dB below the attack's strongest are left out
+        const val ATTACK_GAIN_MARGIN = 4.0
+        const val ATTACK_ALONE = 4.0
 
         const val OUTLIER = 8.0
         const val STROKE_JUMP = 3.0 // energy ratio

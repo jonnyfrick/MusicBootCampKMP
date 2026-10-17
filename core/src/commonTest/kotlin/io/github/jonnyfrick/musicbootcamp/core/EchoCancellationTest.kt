@@ -159,4 +159,35 @@ class EchoCancellationTest {
         val now = found(DetectionParameters())
         assertTrue(now > asBefore, "$now of ${answers.size} found, before $asBefore")
     }
+
+    @Test
+    fun aPlayerAlwaysAnsweringIntoTheNextNoteIsHeard() {
+        // Found in a phone's browser: every answer came 0.8–0.9 s late, half a second into the
+        // app's next note, and rang on. The gains were learned only in pauses of the player, which never came, so the
+        // app's sound was not removed for 8 s; then a stroke over the app's ringing note hardly
+        // raised the total level. Now the gains come from the app's attacks too, and new partials
+        // count as a stroke.
+        val lead = 0.5
+        val reference = FloatArray((17.5 * sampleRate).toInt())
+        appNotes.forEachIndexed { step, note ->
+            addPianoStroke(reference, note, startSeconds = lead + step, durationSeconds = 0.5, seed = 1000 + step)
+        }
+        val microphone = roomEcho(reference, delaySamples = 7_940, gain = 1.0)
+        val answers = (1 until appNotes.size).map { step -> appNotes[step - 1] to lead + step + 0.5 }
+        answers.forEach { (note, time) -> addPianoStroke(microphone, note, startSeconds = time, durationSeconds = 0.9, seed = 7 * note) }
+
+        val tracker = NoteTracker(sampleRate)
+        val notes = microphone.indices.chunked(480).flatMap { indices ->
+            val range = indices.first()..indices.last()
+            tracker.process(microphone.sliceArray(range), reference.sliceArray(range))
+        }
+        val found = notes.map { it.midiNote to ((it.seconds() * 100).toInt() / 100.0) }.toString()
+        val heard = answers.count { (note, time) -> notes.any { it.midiNote == note && it.seconds() - time in 0.0..0.15 } }
+        assertTrue(heard >= answers.size - 2, "$heard of ${answers.size}: $found")
+        // None of the app's own notes after the own-sound gate's 0.45 s, which drops them before.
+        val own = notes.filter { note ->
+            appNotes.indices.any { step -> (appNotes[step] - note.midiNote) % 12 == 0 && note.seconds() - (lead + step) in 0.45..1.0 }
+        }
+        assertEquals(emptyList(), own.map { it.midiNote to it.seconds() }, found)
+    }
 }

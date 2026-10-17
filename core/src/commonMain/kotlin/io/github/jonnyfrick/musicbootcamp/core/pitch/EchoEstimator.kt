@@ -194,6 +194,19 @@ internal class EchoEstimator(
     /** Predicted power of the app's sound per unit of reference power at [frequencyHz] (with the safety factor). */
     fun ownSoundGain(frequencyHz: Double): Double = overSubtraction * gain(bandOf(frequencyHz))
 
+    /**
+     * Whether the predicted own sound has a strong partial within a semitone of [frequencyHz]
+     * (at least [OWN_PARTIAL_SHARE] of its strongest): a note there may be the app's own.
+     */
+    fun soundsAt(frequencyHz: Double): Boolean {
+        val half = paddedSize / 2
+        val strongest = (1 until half).maxOf { echoPower[it] }
+        if (strongest <= 0.0) return false
+        val low = (frequencyHz / SEMITONE * paddedSize / sampleRate).toInt().coerceIn(1, half - 1)
+        val high = (frequencyHz * SEMITONE * paddedSize / sampleRate).toInt().coerceIn(low, half - 1)
+        return (low..high).any { echoPower[it] >= OWN_PARTIAL_SHARE * strongest }
+    }
+
     /** RMS of what the microphone got beyond the predicted own sound. */
     fun residualLevel(micEnergy: Double): Double = sqrt((micEnergy - hopEchoEnergy).coerceAtLeast(0.0))
 
@@ -402,6 +415,8 @@ internal class EchoEstimator(
         (BANDS_PER_OCTAVE * log2(max(frequencyHz, LOWEST_BAND_HZ) / LOWEST_BAND_HZ)).toInt()
 
     private companion object {
+        const val SEMITONE = 1.0594630943592953
+        const val OWN_PARTIAL_SHARE = 0.1 // 10 dB below the strongest partial
         const val MAX_DELAY_HOPS = 30 // ~350 ms at 44.1 kHz
         const val ATTACK_SAMPLES_PER_KHZ = 100 // 100 ms of each attack
         const val PRE_EMPHASIS = 0.97f

@@ -118,7 +118,7 @@ data class AppPreferences(
 }
 
 /** Raise when the defaults of [DetectionParameters] change in a way stored values should follow. */
-const val DETECTION_PARAMETERS_REVISION = 1
+const val DETECTION_PARAMETERS_REVISION = 2
 
 const val DEFAULT_OPTIMIZATION_STEPS = 12
 val OPTIMIZATION_STEP_RANGE = 5..50
